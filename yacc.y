@@ -20,7 +20,7 @@ struct Attrs {
 	char* kind;
 	int level;
 	char* type;
-	char* atrribute;
+	char* attribute;
 };
 
 char* file_name;
@@ -41,6 +41,10 @@ void iter_stack_pop();
 int check_normal_redeclaration();
 int check_for_loop_redeclaration();
 void dumpsymbol();
+struct Constant get_value_of_identifier();
+int check_operands_be_integer_or_real();
+char* get_type_of_relational_operator();
+char* get_type_of_boolean_operator();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -50,7 +54,7 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 %token <text> IDENT KINTEGER KREAL KSTRING KBOOL KARRAY
 %type <text> scalar_type type return_type programname arguments argument function
 %token <constant> PINT ZERO REAL STRING KTRUE KFALSE
-%type <constant> literal_constant integer_constant
+%type <constant> literal_constant integer_literal expression expression_component boolean_expression variable_reference
 
 %right ASSIGN
 %left AND OR %right NOT
@@ -66,22 +70,22 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 
 program	:
 	programname SEMICOLON
-	{
-		if (strcmp($1, file_name)) {
-			yyerror("The program name must be the same as the file name.");
-		} else {
-			add_symbol($1);
-			add_kind_and_type("program", "void");
+		{
+			if (strcmp($1, file_name)) {
+				yyerror("The program name must be the same as the file name");
+			} else {
+				add_symbol($1);
+				add_kind_and_type("program", "void");
+			}
 		}
-	}
 	programbody
 	KEND IDENT
-	{
-		if (strcmp($1, $6))
-			yyerror("The identifier after the end of a program declaration must be the same identifier as the name given at the beginning of the declaration.");
-		else
-			dumpsymbol();
-	}
+		{
+			if (strcmp($1, $6))
+				yyerror("The identifier after the end of a program declaration must be the same identifier as the name given at the beginning of the declaration");
+			else
+				dumpsymbol();
+		}
 
 programbody :
 	declarations functions compound
@@ -104,14 +108,26 @@ function :
 			}
 			$<text>$ = strdup(result);
 		}
-	RPAREN return_type SEMICOLON
-	KBEGIN declarations statements KEND
-		{ 
-			dumpsymbol();
-			add_kind_and_type("function", $8);
-			add_attribute($<text>6);
+	RPAREN return_type
+		{
+			if (strcmp($8, "integer")
+				&& strcmp($8, "real")
+				&& strcmp($8, "string")
+				&& strcmp($8, "bool"))
+			yyerror("The return value must be a scalar type");
 		}
+	SEMICOLON
+	KBEGIN declarations statements KEND
 	KEND IDENT
+		{ 
+			if (strcmp($1, $16)) {
+				yyerror("The identifier after the end of a function declaration must be the same identifier as the name given at the beginning of the declaration");
+			} else {
+				dumpsymbol();
+				add_kind_and_type("function", $8);
+				add_attribute($<text>6);
+			}
+		}
 
 declaration :
 	KVAR identifier_list COLON type SEMICOLON { add_kind_and_type("variable", $4); }
@@ -151,6 +167,9 @@ compound :
 
 simple :
 	variable_reference ASSIGN expression SEMICOLON
+		{
+			/* array arithmetic is not allowed */
+		}
 	| KPRINT variable_reference SEMICOLON
 	| KPRINT expression SEMICOLON
 	| KREAD variable_reference SEMICOLON
@@ -165,7 +184,7 @@ while :
 
 for :
 	KFOR IDENT { add_iter_variable($2); }
-	ASSIGN integer_constant KTO integer_constant KDO statements KEND KDO { iter_stack_pop(); }
+	ASSIGN integer_literal KTO integer_literal KDO statements KEND KDO { iter_stack_pop(); }
 
 return :
 	KRET expression SEMICOLON
@@ -177,14 +196,15 @@ function_invocation :
 	IDENT LPAREN expressions RPAREN
 
 variable_reference :
-	IDENT | array_reference
+	IDENT { $$ = get_value_of_identifier($1); }
+	| array_reference
 
 array_reference : 
 	IDENT index_references
 
 index_references :
 	/* empty */
-	| LSBRACKET expression RSBRACKET index_references
+	| LSBRACKET integer_literal RSBRACKET index_references
 
 programname	: IDENT
 
@@ -197,29 +217,30 @@ scalar_type :
 
 type :
 	scalar_type
-	| KARRAY integer_constant KTO integer_constant KOF type
+	| KARRAY integer_literal KTO integer_literal KOF type
 		{
-			char int_str[10];
-			sprintf(int_str, "%d", $4.data.integer-$2.data.integer+1);
-			char result[50];
-			/* Insert "[int_str]" before the first '[' */
-			int i;
-			for (i = 0; i < strlen($6); i++)
-				if ($6[i] == '[') {
-					break;
-				}
-			strncpy(result, $6, i);
-			result[i] = '\0';
-			/* If there's no "[]", we have to add another space */
-			if (i == strlen($6))
-				strcat(result, " ");
-			strcat( strcat(strcat(result, "["), int_str), "]" );
-			strcat(result, $6 + i);
-			$$ = strdup(result);
+			if ($2.data.integer > $4.data.integer) {
+				yyerror("The index of the lower bound must be smaller than that of the upper bound");
+			} else {
+				char int_str[10];
+				sprintf(int_str, "%d", $4.data.integer-$2.data.integer+1);
+				char result[50];
+				/* Insert "[int_str]" before the first '[' */
+				int i;
+				for (i = 0; i < strlen($6); i++)
+					if ($6[i] == '[') {
+						break;
+					}
+				strncpy(result, $6, i);
+				result[i] = '\0';
+				/* If there's no "[]", we have to add another space */
+				if (i == strlen($6))
+					strcat(result, " ");
+				strcat( strcat(strcat(result, "["), int_str), "]" );
+				strcat(result, $6 + i);
+				$$ = strdup(result);
+			}
 		}
-
-integer_constant :
-	PINT
 
 integer_literal :
 	PINT | ZERO
@@ -251,34 +272,43 @@ return_type :
 	| COLON type { $$ = $2; }
 
 expression_component :
-	literal_constant | variable_reference | function_invocation
+	literal_constant
+	| variable_reference
+	| function_invocation
 
 expression :
-	expression_component {if(DEBUG1) printf("----------expression_component\n");}
+	expression_component
 	| boolean_expression
-	| expression PLUS expression {if(DEBUG1) printf("----------expression + expression\n");}
-	| expression MINUS expression {if(DEBUG1) printf("----------expression - expression\n");}
-	| expression MULTIP expression {if(DEBUG1) printf("----------expression * expression\n");}
-	| expression DIVIDE expression {if(DEBUG1) printf("----------expression / expression\n");}
-	| expression MOD expression {if(DEBUG1) printf("----------expression mod expression\n");}
-	| MINUS expression %prec MULTIP {if(DEBUG1) printf("----------MINUS expression\n");}
-	| LPAREN expression RPAREN {if(DEBUG1) printf("----------(expression)\n");}
+	| expression PLUS expression { check_operands_be_integer_or_real($1, $3); }
+	| expression MINUS expression { check_operands_be_integer_or_real($1, $3); }
+	| expression MULTIP expression { check_operands_be_integer_or_real($1, $3); }
+	| expression DIVIDE expression { check_operands_be_integer_or_real($1, $3); }
+	| expression MOD expression
+		{
+			if (strcmp($1.type, "integer") || strcmp($3.type, "integer"))
+				yyerror("The operands must be integer types");
+			else
+				$$.type = "integer";
+		}
+	| MINUS expression %prec MULTIP
+	| LPAREN expression RPAREN
 
 boolean_expression :
-	expression LESS expression {if(DEBUG1) printf("----------expression < expression\n");}
-	| expression LESSEQ expression {if(DEBUG1) printf("----------expression <= expression\n");}
-	| expression NOTEQ expression {if(DEBUG1) printf("----------expression <> expression\n");}
-	| expression GREQ expression {if(DEBUG1) printf("----------expression >= expression\n");}
-	| expression GREATER expression {if(DEBUG1) printf("----------expression > expression\n");}
-	| expression EQ expression {if(DEBUG1) printf("----------expression = expression\n");}
-	| expression OR expression {if(DEBUG1) printf("----------expression or expression\n");}
-	| expression AND expression {if(DEBUG1) printf("----------expression and expression\n");}
-	| NOT expression {if(DEBUG1) printf("----------not expression\n");}
-
-/*
-integer_expression :
-	integer_literal
-*/
+	expression LESS expression { $$.type = get_type_of_relational_operator($1, $3); }
+	| expression LESSEQ expression { $$.type = get_type_of_relational_operator($1, $3); }
+	| expression NOTEQ expression { $$.type = get_type_of_relational_operator($1, $3); }
+	| expression GREQ expression { $$.type = get_type_of_relational_operator($1, $3); }
+	| expression GREATER expression { $$.type = get_type_of_relational_operator($1, $3); }
+	| expression EQ expression { $$.type = get_type_of_relational_operator($1, $3); }
+	| expression OR expression { $$.type = get_type_of_boolean_operator($1, $3); }
+	| expression AND expression { $$.type = get_type_of_boolean_operator($1, $3); }
+	| NOT expression
+		{
+			if (strcmp($2.type, "boolean"))
+				yyerror("The operand must be boolean type");
+			else
+				$$.type = "boolean";
+		}
 
 %%
 
@@ -329,8 +359,8 @@ void add_attribute(char *attr)
 {
 	for (int i = 0; i < cur_index[top]; i++)
 		if ( (!strcmp(stack[top][i].kind, "constant") || !strcmp(stack[top][i].kind, "function") )
-				&& !stack[top][i].atrribute ) {
-			stack[top][i].atrribute = strdup(attr);
+				&& !stack[top][i].attribute ) {
+			stack[top][i].attribute = strdup(attr);
 		}
 }
 
@@ -341,7 +371,7 @@ void clear_table()
 		stack[top][i].name = NULL;
 		stack[top][i].kind = NULL;
 		stack[top][i].type = NULL;
-		stack[top][i].atrribute = NULL;
+		stack[top][i].attribute = NULL;
 	}
 }
 
@@ -410,7 +440,7 @@ void dumpsymbol()
 			printf("%-11s", stack[top][i].kind);
 			printf("%d%-10s", top, top ? "(local)" : "(global)");
 			printf("%-17s", stack[top][i].type);
-			printf("%-11s", stack[top][i].atrribute ? stack[top][i].atrribute : "");
+			printf("%-11s", stack[top][i].attribute ? stack[top][i].attribute : "");
 			printf("\n");
 		}
 		for (i = 0; i < 110; i++)
@@ -421,6 +451,55 @@ void dumpsymbol()
 	/* Pop the table and remember to clear it*/
 	clear_table();
 	top--;
+}
+
+struct Constant get_value_of_identifier(char *identifier)
+{
+	struct Constant ret;
+	/* Scan every scope from top to bottom */
+	for (int scope = top; scope >= 0; scope--)
+		for (int i = 0; i < cur_index[top]; i++)
+			if (!strcmp(identifier, stack[scope][i].name)) {
+				ret.type = stack[scope][i].type;
+				return ret;
+			}
+	char message[100] = "symbol ";
+	strcat( strcat(message, identifier), " is not declared");
+	yyerror(message);
+}
+
+int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
+{
+	if ( (strcmp(a.type, "integer") && strcmp(a.type, "real"))
+		|| (strcmp(b.type, "integer") && strcmp(b.type, "real")) ) {
+		yyerror("The operands must be integer or real types");
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+char* get_type_of_boolean_operator(struct Constant a, struct Constant b)
+{
+	if (strcmp(a.type, "boolean") || strcmp(b.type, "boolean")) {
+		yyerror("The operands must be boolean types");
+		return NULL;
+	} else {
+		return "boolean";
+	}
+}
+
+char* get_type_of_relational_operator(struct Constant a, struct Constant b)
+{
+	if (check_operands_be_integer_or_real(a, b)) {
+		if (strcmp(a.type, b.type)) {
+			yyerror("The operands must be of the same type");
+			return NULL;
+		}
+		return "boolean";
+	} else {
+		return NULL;
+	}
 }
 
 int  main( int argc, char **argv )
