@@ -74,7 +74,7 @@ program	:
 	programname SEMICOLON
 		{
 			if (strcmp($1, file_name)) {
-				yyerror("The program name must be the same as the file name");
+				yyerror("the program name must be the same as the file name");
 			} else {
 				add_symbol($1);
 				add_kind_and_type("program", "void");
@@ -84,7 +84,7 @@ program	:
 	KEND IDENT
 		{
 			if (strcmp($1, $6))
-				yyerror("The identifier after the end of a program declaration must be the same identifier as the name given at the beginning of the declaration");
+				yyerror("the identifier after the end of a program declaration must be the same identifier as the name given at the beginning of the declaration");
 			else
 				dumpsymbol();
 		}
@@ -115,15 +115,16 @@ function :
 			if (strcmp($8, "integer")
 				&& strcmp($8, "real")
 				&& strcmp($8, "string")
-				&& strcmp($8, "bool"))
-			yyerror("The return value must be a scalar type");
+				&& strcmp($8, "bool")
+				&& strcmp($8, "void"))
+			yyerror("the return value must be a scalar type");
 		}
 	SEMICOLON
 	KBEGIN declarations statements KEND
 	KEND IDENT
 		{ 
 			if (strcmp($1, $16)) {
-				yyerror("The identifier after the end of a function declaration must be the same identifier as the name given at the beginning of the declaration");
+				yyerror("the identifier after the end of a function declaration must be the same identifier as the name given at the beginning of the declaration");
 			} else {
 				dumpsymbol();
 				add_kind_and_type("function", $8);
@@ -170,8 +171,13 @@ compound :
 simple :
 	variable_reference ASSIGN expression SEMICOLON
 		{
-			if (strcmp($1.type, $3.type) && strcmp($1.type, "real") && strcmp($3.type, "integer"))
-				yyerror("The type of the left-hand side must be the same as that of the right-hand side");
+			if (!strcmp($1.kind, "constant")) {
+				char message[100] = "constant '";
+				strcat( strcat(message, $1.symbol), "' cannot be assigned");
+				yyerror(message);
+			} else if (strcmp($1.type, $3.type) && strcmp($1.type, "real") && strcmp($3.type, "integer")) {
+				yyerror("the type of the left-hand side must be the same as that of the right-hand side");
+			}
 		}
 	| KPRINT variable_reference SEMICOLON
 	| KPRINT expression SEMICOLON
@@ -189,7 +195,7 @@ for :
 	ASSIGN integer_literal KTO integer_literal
 		{
 			if ($5.data.integer > $7.data.integer)
-				yyerror("The loop parameter must be in the incremental order");
+				yyerror("the loop parameter must be in the incremental order");
 		}
 	KDO statements KEND KDO { iter_stack_pop(); }
 
@@ -215,7 +221,7 @@ function_invocation :
 				strcat( strcat(message, $1), " is not declared");
 				yyerror(message);
 			} else if (strcmp(param_types, $3.type)) {
-				yyerror("The types of the actual parameters must be identical to the types of the formal parameters");
+				yyerror("the types of the actual parameters must be identical to the types of the formal parameters");
 			}
 		}
 
@@ -244,7 +250,7 @@ type :
 	| KARRAY integer_literal KTO integer_literal KOF type
 		{
 			if ($2.data.integer > $4.data.integer) {
-				yyerror("The index of the lower bound must be smaller than that of the upper bound");
+				yyerror("the index of the lower bound must be smaller than that of the upper bound");
 			} else {
 				char int_str[10];
 				sprintf(int_str, "%d", $4.data.integer-$2.data.integer+1);
@@ -309,7 +315,7 @@ expression :
 	| expression MOD expression
 		{
 			if (strcmp($1.type, "integer") || strcmp($3.type, "integer"))
-				yyerror("The operands must be integer types");
+				yyerror("the operands must be integer types");
 			else
 				$$.type = "integer";
 		}
@@ -328,7 +334,7 @@ boolean_expression :
 	| NOT expression
 		{
 			if (strcmp($2.type, "boolean"))
-				yyerror("The operand must be boolean type");
+				yyerror("the operand must be boolean type");
 			else
 				$$.type = "boolean";
 		}
@@ -487,6 +493,8 @@ struct Constant get_value_of_identifier(char *identifier)
 		for (int i = 0; i < cur_index[scope]; i++) {
 			if (!strcmp(identifier, stack[scope][i].name)) {
 				ret.type = stack[scope][i].type;
+				ret.kind = stack[scope][i].kind;
+				ret.symbol = stack[scope][i].name;
 				return ret;
 			}
 		}
@@ -496,7 +504,7 @@ struct Constant get_value_of_identifier(char *identifier)
 		if (!strcmp(identifier, iter_stack[i]))
 			is_loop_variable = 1;
 	if (is_loop_variable) {
-		yyerror("The value of the loop variable cannot be changed inside the loop");
+		yyerror("the value of the loop variable cannot be changed inside the loop");
 	} else {
 		char message[100] = "symbol ";
 		strcat( strcat(message, identifier), " is not declared");
@@ -510,7 +518,7 @@ int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
 {
 	if ( (strcmp(a.type, "integer") && strcmp(a.type, "real"))
 		|| (strcmp(b.type, "integer") && strcmp(b.type, "real")) ) {
-		yyerror("The operands must be integer or real types");
+		yyerror("the operands must be integer or real types");
 		return 0;
 	} else {
 		return 1;
@@ -532,7 +540,7 @@ char* get_type_of_arithmetic_operator(struct Constant a, struct Constant b)
 char* get_type_of_boolean_operator(struct Constant a, struct Constant b)
 {
 	if (strcmp(a.type, "boolean") || strcmp(b.type, "boolean")) {
-		yyerror("The operands must be boolean types");
+		yyerror("the operands must be boolean types");
 		return "";
 	} else {
 		return "boolean";
@@ -543,7 +551,7 @@ char* get_type_of_relational_operator(struct Constant a, struct Constant b)
 {
 	if (check_operands_be_integer_or_real(a, b)) {
 		if (strcmp(a.type, b.type)) {
-			yyerror("The operands must be of the same type");
+			yyerror("the operands must be of the same type");
 			return "";
 		}
 		return "boolean";
@@ -555,7 +563,7 @@ char* get_type_of_relational_operator(struct Constant a, struct Constant b)
 void check_conditional_expression(struct Constant x)
 {
 	if (strcmp(x.type, "boolean"))
-		yyerror("The conditional expression part must be Boolean type");
+		yyerror("the conditional expression part must be Boolean type");
 }
 
 int  main( int argc, char **argv )
