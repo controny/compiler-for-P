@@ -56,7 +56,7 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 %token <text> IDENT KINTEGER KREAL KSTRING KBOOL KARRAY
 %type <text> scalar_type type return_type programname arguments argument function
 %token <constant> PINT ZERO REAL STRING KTRUE KFALSE
-%type <constant> literal_constant integer_literal expressions expression expression_component boolean_expression variable_reference
+%type <constant> literal_constant integer_literal expressions expression expression_component boolean_expression variable_reference function_invocation
 
 %right ASSIGN
 %left AND OR %right NOT
@@ -175,7 +175,7 @@ simple :
 				char message[100] = "constant '";
 				strcat( strcat(message, $1.symbol), "' cannot be assigned");
 				yyerror(message);
-			} else if (strcmp($1.type, $3.type) && strcmp($1.type, "real") && strcmp($3.type, "integer")) {
+			} else if ( strcmp($1.type, $3.type) && (strcmp($1.type, "real") || strcmp($3.type, "integer")) ) {
 				yyerror("the type of the left-hand side must be the same as that of the right-hand side");
 			}
 		}
@@ -209,10 +209,12 @@ function_invocation :
 	IDENT LPAREN expressions RPAREN
 		{
 			char* param_types = NULL;
+			char* return_type;
 			for (int scope = top; scope >= 0; scope--) {
 				for (int i = 0; i < cur_index[scope]; i++) {
 					if (!strcmp($1, stack[scope][i].name)) {
 						param_types = stack[scope][i].attribute;
+						return_type = stack[scope][i].type;
 					}
 				}
 			}
@@ -222,6 +224,8 @@ function_invocation :
 				yyerror(message);
 			} else if (strcmp(param_types, $3.type)) {
 				yyerror("the types of the actual parameters must be identical to the types of the formal parameters");
+			} else {
+				$$.type = return_type;
 			}
 		}
 
@@ -279,7 +283,7 @@ literal_constant :
 	integer_literal | REAL | STRING {$$.data.text = strdup($1.data.text);} | KTRUE | KFALSE
 
 expressions :
-	/* empty */
+	/* empty */ { $$.type = ""; }
 	| expression
 	| expression COMMA expressions
 		{
