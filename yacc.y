@@ -43,8 +43,10 @@ int check_for_loop_redeclaration();
 void dumpsymbol();
 struct Constant get_value_of_identifier();
 int check_operands_be_integer_or_real();
+char* get_type_of_arithmetic_operator();
 char* get_type_of_relational_operator();
 char* get_type_of_boolean_operator();
+void check_conditional_expression();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -54,7 +56,7 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 %token <text> IDENT KINTEGER KREAL KSTRING KBOOL KARRAY
 %type <text> scalar_type type return_type programname arguments argument function
 %token <constant> PINT ZERO REAL STRING KTRUE KFALSE
-%type <constant> literal_constant integer_literal expression expression_component boolean_expression variable_reference
+%type <constant> literal_constant integer_literal expressions expression expression_component boolean_expression variable_reference
 
 %right ASSIGN
 %left AND OR %right NOT
@@ -168,23 +170,28 @@ compound :
 simple :
 	variable_reference ASSIGN expression SEMICOLON
 		{
-			/* array arithmetic is not allowed */
+			if (strcmp($1.type, $3.type) && strcmp($1.type, "real") && strcmp($3.type, "integer"))
+				yyerror("The type of the left-hand side must be the same as that of the right-hand side");
 		}
 	| KPRINT variable_reference SEMICOLON
 	| KPRINT expression SEMICOLON
 	| KREAD variable_reference SEMICOLON
 
-/* Don't care about the difference between 'expression' and 'boolean expression' */
 conditional : 
-	KIF expression KTHEN statements KELSE statements KEND KIF
-	| KIF expression KTHEN statements KEND KIF
+	KIF expression KTHEN statements KELSE statements KEND KIF { check_conditional_expression($2); }
+	| KIF expression KTHEN statements KEND KIF { check_conditional_expression($2); }
 
 while :
-	KWHILE expression KDO statements KEND KDO
+	KWHILE expression KDO statements KEND KDO { check_conditional_expression($2); }
 
 for :
 	KFOR IDENT { add_iter_variable($2); }
-	ASSIGN integer_literal KTO integer_literal KDO statements KEND KDO { iter_stack_pop(); }
+	ASSIGN integer_literal KTO integer_literal
+		{
+			if ($5.data.integer > $7.data.integer)
+				yyerror("The loop parameter must be in the incremental order");
+		}
+	KDO statements KEND KDO { iter_stack_pop(); }
 
 return :
 	KRET expression SEMICOLON
@@ -194,6 +201,23 @@ procedure_call :
 
 function_invocation :
 	IDENT LPAREN expressions RPAREN
+		{
+			char* param_types = NULL;
+			for (int scope = top; scope >= 0; scope--) {
+				for (int i = 0; i < cur_index[scope]; i++) {
+					if (!strcmp($1, stack[scope][i].name)) {
+						param_types = stack[scope][i].attribute;
+					}
+				}
+			}
+			if (!param_types) {
+				char message[100] = "function ";
+				strcat( strcat(message, $1), " is not declared");
+				yyerror(message);
+			} else if (strcmp(param_types, $3.type)) {
+				yyerror("The types of the actual parameters must be identical to the types of the formal parameters");
+			}
+		}
 
 variable_reference :
 	IDENT { $$ = get_value_of_identifier($1); }
@@ -252,17 +276,16 @@ expressions :
 	/* empty */
 	| expression
 	| expression COMMA expressions
+		{
+			$$.type = malloc(100);
+			strcpy($$.type, $1.type);
+			strcat( strcat($$.type, ", "), $3.type );
+		}
 
 arguments :
-	/* empty */ /*{ $$ = ""; }*/
+	/* empty */
 	| argument
 	| argument SEMICOLON arguments
-		/*{
-			char *tmp = malloc(50);
-			strcpy(tmp, $1);
-			strcat( strcat(tmp, ", "), $3);
-			$$ = strdup(tmp);
-		}*/
 
 argument :
 	identifier_list COLON type { $$ = $3; add_kind_and_type("parameter", $3); }
@@ -279,10 +302,10 @@ expression_component :
 expression :
 	expression_component
 	| boolean_expression
-	| expression PLUS expression { check_operands_be_integer_or_real($1, $3); }
-	| expression MINUS expression { check_operands_be_integer_or_real($1, $3); }
-	| expression MULTIP expression { check_operands_be_integer_or_real($1, $3); }
-	| expression DIVIDE expression { check_operands_be_integer_or_real($1, $3); }
+	| expression PLUS expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
+	| expression MINUS expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
+	| expression MULTIP expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
+	| expression DIVIDE expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
 	| expression MOD expression
 		{
 			if (strcmp($1.type, "integer") || strcmp($3.type, "integer"))
@@ -378,10 +401,13 @@ void clear_table()
 void add_iter_variable(char *name)
 {
 	if (check_for_loop_redeclaration(name)) {
-		iter_stack[iter_top++] = strdup(name);
+		iter_stack[iter_top] = strdup(name);
 		if (DEBUG2)
 			printf("------------Add iterative variable: %s\n", name);
+	} else {
+		iter_stack[iter_top] = "";
 	}
+	iter_top++;
 }
 
 void iter_stack_pop()
@@ -457,15 +483,27 @@ struct Constant get_value_of_identifier(char *identifier)
 {
 	struct Constant ret;
 	/* Scan every scope from top to bottom */
-	for (int scope = top; scope >= 0; scope--)
-		for (int i = 0; i < cur_index[top]; i++)
+	for (int scope = top; scope >= 0; scope--) {
+		for (int i = 0; i < cur_index[scope]; i++) {
 			if (!strcmp(identifier, stack[scope][i].name)) {
 				ret.type = stack[scope][i].type;
 				return ret;
 			}
-	char message[100] = "symbol ";
-	strcat( strcat(message, identifier), " is not declared");
-	yyerror(message);
+		}
+	}
+	int is_loop_variable = 0;
+	for (int i = 0; i < iter_top; i++)
+		if (!strcmp(identifier, iter_stack[i]))
+			is_loop_variable = 1;
+	if (is_loop_variable) {
+		yyerror("The value of the loop variable cannot be changed inside the loop");
+	} else {
+		char message[100] = "symbol ";
+		strcat( strcat(message, identifier), " is not declared");
+		yyerror(message);
+	}
+	ret.type = "";
+	return ret;
 }
 
 int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
@@ -479,11 +517,23 @@ int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
 	}
 }
 
+char* get_type_of_arithmetic_operator(struct Constant a, struct Constant b)
+{
+	if (check_operands_be_integer_or_real(a, b)) {
+		if (!strcmp(a.type, "real") || !strcmp(b.type, "real"))
+			return "real";
+		else
+			return "integer";
+	} else {
+		return "";
+	}
+}
+
 char* get_type_of_boolean_operator(struct Constant a, struct Constant b)
 {
 	if (strcmp(a.type, "boolean") || strcmp(b.type, "boolean")) {
 		yyerror("The operands must be boolean types");
-		return NULL;
+		return "";
 	} else {
 		return "boolean";
 	}
@@ -494,12 +544,18 @@ char* get_type_of_relational_operator(struct Constant a, struct Constant b)
 	if (check_operands_be_integer_or_real(a, b)) {
 		if (strcmp(a.type, b.type)) {
 			yyerror("The operands must be of the same type");
-			return NULL;
+			return "";
 		}
 		return "boolean";
 	} else {
-		return NULL;
+		return "";
 	}
+}
+
+void check_conditional_expression(struct Constant x)
+{
+	if (strcmp(x.type, "boolean"))
+		yyerror("The conditional expression part must be Boolean type");
 }
 
 int  main( int argc, char **argv )
