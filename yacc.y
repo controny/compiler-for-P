@@ -171,12 +171,14 @@ compound :
 simple :
 	variable_reference ASSIGN expression SEMICOLON
 		{
-			if (!strcmp($1.kind, "constant")) {
+			if ($1.kind && !strcmp($1.kind, "constant")) {
 				char message[100] = "constant '";
 				strcat( strcat(message, $1.symbol), "' cannot be assigned");
 				yyerror(message);
 			} else if ( strcmp($1.type, $3.type) && (strcmp($1.type, "real") || strcmp($3.type, "integer")) ) {
-				yyerror("the type of the left-hand side must be the same as that of the right-hand side");
+				/* If $3.type is empty, then there must be error in deciding its type and thus no need to print error */
+				if (strcmp($3.type, ""))
+					yyerror("the type of the left-hand side must be the same as that of the right-hand side");
 			}
 		}
 	| KPRINT variable_reference SEMICOLON
@@ -238,7 +240,11 @@ array_reference :
 
 index_references :
 	/* empty */
-	| LSBRACKET integer_literal RSBRACKET index_references
+	| LSBRACKET expression RSBRACKET index_references
+		{
+			if (strcmp($2.type, "integer"))
+				yyerror("each index of array references must be an integer");
+		}
 
 programname	: IDENT
 
@@ -312,7 +318,15 @@ expression_component :
 expression :
 	expression_component
 	| boolean_expression
-	| expression PLUS expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
+	| expression PLUS expression
+		{
+			/* Allow string concatenation */
+			if (!strcmp($1.type, "string") && !strcmp($3.type, "string")) {
+				$$.type = "string";
+			} else {
+				$$.type = get_type_of_arithmetic_operator($1, $3);
+			}
+		}
 	| expression MINUS expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
 	| expression MULTIP expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
 	| expression DIVIDE expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
