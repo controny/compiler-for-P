@@ -120,7 +120,7 @@ function :
 				&& strcmp($8, "string")
 				&& strcmp($8, "bool")
 				&& strcmp($8, "void"))
-			yyerror("the return value must be a scalar type");
+				yyerror("the return value must be a scalar type");
 		}
 	SEMICOLON
 	KBEGIN declarations statements KEND
@@ -178,6 +178,8 @@ simple :
 				char message[100] = "constant '";
 				strcat( strcat(message, $1.symbol), "' cannot be assigned");
 				yyerror(message);
+			} else if (is_array_type($1.type) || is_array_type($3.type)) {
+				yyerror("array arithmetic is not allowed");
 			} else if ( strcmp($1.type, $3.type) && (strcmp($1.type, "real") || strcmp($3.type, "integer")) ) {
 				/* If $3.type is empty, then there must be error in deciding its type and thus no need to print error */
 				if (strcmp($3.type, ""))
@@ -604,6 +606,14 @@ void check_conditional_expression(struct Constant x)
 {
 	if (strcmp(x.type, "boolean"))
 		yyerror("the conditional expression part must be Boolean type");
+}
+
+int is_array_type(char* t)
+{
+	for (int i = 0; i < strlen(t); i++)
+		if (t[i] == '[')
+			return 1;
+	return 0;
 }
 
 int  main( int argc, char **argv )
