@@ -56,7 +56,9 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 %token <text> IDENT KINTEGER KREAL KSTRING KBOOL KARRAY
 %type <text> scalar_type type return_type programname arguments argument function
 %token <constant> PINT ZERO REAL STRING KTRUE KFALSE
-%type <constant> literal_constant integer_literal expressions expression expression_component boolean_expression variable_reference function_invocation
+%type <constant> literal_constant integer_literal expressions expression expression_component boolean_expression
+variable_reference function_invocation array_reference
+%type <count> index_references
 
 %right ASSIGN
 %left AND OR %right NOT
@@ -67,6 +69,7 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 %union {
 	struct Constant constant;
 	char* text;
+	int count;
 }
 %%
 
@@ -237,13 +240,32 @@ variable_reference :
 
 array_reference : 
 	IDENT index_references
+		{
+			char* original_type = get_value_of_identifier($1).type;
+			int index_reference_count = $2;
+			int pos;
+			for (pos = strlen(original_type)-1; pos >= 0; pos--) {
+				if (original_type[pos] == '[')
+					index_reference_count--;
+				if (!index_reference_count)
+					break;
+			}
+			/* Remove the gap space */
+			if (original_type[pos-1] == ' ')
+				pos--;
+			$$.type = malloc(100);
+			strncpy($$.type, original_type, pos);
+		}
 
 index_references :
-	/* empty */
+	/* empty */ { $$ = 0; }
 	| LSBRACKET expression RSBRACKET index_references
 		{
-			if (strcmp($2.type, "integer"))
+			if (strcmp($2.type, "integer")) {
 				yyerror("each index of array references must be an integer");
+			} else {
+				$$ = $4 + 1;
+			}
 		}
 
 programname	: IDENT
