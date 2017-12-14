@@ -87,20 +87,19 @@ variable_reference function_invocation array_reference
 program	:
 	programname SEMICOLON
 		{
-			if (strcmp($1, file_name)) {
-				yyerror("the program name must be the same as the file name");
-			} else {
-				add_symbol($1);
-				add_kind_and_type("program", "void");
-			}
+			if (strcmp($1, file_name))
+				yyerror("program beginning ID inconsist with file name");
+			add_symbol($1);
+			add_kind_and_type("program", "void");
 		}
 	programbody
 	KEND IDENT
 		{
 			if (strcmp($1, $6))
-				yyerror("the identifier after the end of a program declaration must be the same identifier as the name given at the beginning of the declaration");
-			else
-				dumpsymbol();
+				yyerror("program end ID inconsist with the beginning ID");
+			if (strcmp($1, file_name))
+				yyerror("program end ID inconsist with file name");
+			dumpsymbol();
 		}
 
 programbody :
@@ -117,12 +116,20 @@ function :
 				yyerror("the return value must be a scalar type");
 				$<text>$ = "error";
 			} else {
-				add_symbol($1);
+				for (int i = 0; i < cur_var_index; i++)
+					if (!strcmp(var_types[i], "error")) {
+						$<text>$ = "error";
+						break;
+					}
 			}
+			if (strcmp($<text>$, "error"))
+				add_symbol($1);
 			add_table();
 			for (int i = 0; i < cur_var_index; i++) {
-				add_symbol(var_symbols[i]);
-				add_kind_and_type("parameter", var_types[i]);
+				if (strcmp(var_types[i], "error")) {
+					add_symbol(var_symbols[i]);
+					add_kind_and_type("parameter", var_types[i]);
+				}
 			}
 			if (strcmp($<text>$, "error")) {
 				/* Calculate attributes of the funciton */
@@ -206,8 +213,8 @@ simple :
 	variable_reference ASSIGN expression SEMICOLON
 		{
 			if ($1.kind && !strcmp($1.kind, "constant")) {
-				char message[100] = "constant '";
-				strcat( strcat(message, $1.symbol), "' cannot be assigned");
+				char message[100] = "constant \'";
+				strcat( strcat(message, $1.symbol), "\' cannot be assigned");
 				yyerror(message);
 			} else if ( strcmp($1.type, $3.type) && (strcmp($1.type, "real") || strcmp($3.type, "integer")) ) {
 				/* If $3.type is empty, then there must be error in deciding its type and thus no need to print error */
@@ -281,19 +288,21 @@ array_reference :
 	IDENT index_references
 		{
 			char* original_type = get_value_of_identifier($1).type;
-			int index_reference_count = $2;
-			int pos;
-			for (pos = strlen(original_type)-1; pos >= 0; pos--) {
-				if (original_type[pos] == '[')
-					index_reference_count--;
-				if (!index_reference_count)
-					break;
+			if (strcmp(original_type, "error")) {
+				int index_reference_count = $2;
+				int pos;
+				for (pos = strlen(original_type)-1; pos >= 0; pos--) {
+					if (original_type[pos] == '[')
+						index_reference_count--;
+					if (!index_reference_count)
+						break;
+				}
+				/* Remove the gap space */
+				if (original_type[pos-1] == ' ')
+					pos--;
+				$$.type = malloc(100);
+				strncpy($$.type, original_type, pos);
 			}
-			/* Remove the gap space */
-			if (original_type[pos-1] == ' ')
-				pos--;
-			$$.type = malloc(100);
-			strncpy($$.type, original_type, pos);
 		}
 
 index_references :
@@ -322,6 +331,7 @@ type :
 		{
 			if ($2.data.integer > $4.data.integer) {
 				yyerror("the index of the lower bound must be smaller than that of the upper bound");
+				$$ = "error";
 			} else {
 				char int_str[10];
 				sprintf(int_str, "%d", $4.data.integer-$2.data.integer+1);
@@ -593,11 +603,11 @@ struct Constant get_value_of_identifier(char *identifier)
 	if (is_loop_variable) {
 		yyerror("the value of the loop variable cannot be changed inside the loop");
 	} else {
-		char message[100] = "symbol ";
-		strcat( strcat(message, identifier), " is not declared");
+		char message[100] = "symbol '";
+		strcat( strcat(message, identifier), "'' is not declared");
 		yyerror(message);
 	}
-	ret.type = "";
+	ret.type = "error";
 	return ret;
 }
 
