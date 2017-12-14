@@ -31,10 +31,18 @@ int cur_index[MAX_TABLE_NUMBER];	/* The current index of a table */
 char* iter_stack[MAX_TABLE_SIZE];	/* A stack to record iterative variables in for loop */
 int iter_top;
 int has_error;
+/* To handle adding function parameters and variable declaration */
+char* var_symbols[50];
+char* var_types[50];
+int cur_var_index, last_var_index;
+/* Indicate the current function type to check return type 
+and empty string means not in a function scope */
+char* cur_func_type;
 
 void add_table();
 void add_symbol();
 void add_kind_and_type();
+void add_var_type();
 void add_attribute();
 void add_iter_variable();
 void iter_stack_pop();
@@ -99,50 +107,68 @@ programbody :
 	declarations functions compound
 
 function :
-	IDENT {add_symbol($1);} LPAREN { add_table(); }
-	arguments
+	IDENT LPAREN arguments RPAREN return_type
 		{
-			/* Calculate attributes of the funciton */
-			char result[100] = "";
-			for (int i = 0; i < cur_index[top]; i++)
-			{
-				if (!strcmp(stack[top][i].kind, "parameter"))
-				{
-					if (!strcmp(result, ""))
-						strcpy(result, stack[top][i].type);
-					else
-						strcat( strcat(result, ", "),  stack[top][i].type);
-				}
-			}
-			$<text>$ = strdup(result);
-		}
-	RPAREN return_type
-		{
-			if (strcmp($8, "integer")
-				&& strcmp($8, "real")
-				&& strcmp($8, "string")
-				&& strcmp($8, "bool")
-				&& strcmp($8, "void"))
+			if (strcmp($5, "integer")
+				&& strcmp($5, "real")
+				&& strcmp($5, "string")
+				&& strcmp($5, "bool")
+				&& strcmp($5, "void")) {
 				yyerror("the return value must be a scalar type");
-		}
-	SEMICOLON
-	KBEGIN declarations statements KEND
-	KEND IDENT
-		{ 
-			if (strcmp($1, $16)) {
-				yyerror("the identifier after the end of a function declaration must be the same identifier as the name given at the beginning of the declaration");
+				$<text>$ = "error";
 			} else {
-				dumpsymbol();
-				add_kind_and_type("function", $8);
+				add_symbol($1);
+			}
+			add_table();
+			for (int i = 0; i < cur_var_index; i++) {
+				add_symbol(var_symbols[i]);
+				add_kind_and_type("parameter", var_types[i]);
+			}
+			if (strcmp($<text>$, "error")) {
+				/* Calculate attributes of the funciton */
+				char attributes[100] = "";
+				for (int i = 0; i < cur_index[top]; i++)
+				{
+					if (!strcmp(stack[top][i].kind, "parameter"))
+					{
+						if (!strcmp(attributes, ""))
+							strcpy(attributes, stack[top][i].type);
+						else
+							strcat( strcat(attributes, ", "),  stack[top][i].type);
+					}
+				}
+				$<text>$ = strdup(attributes);
+			}
+			cur_var_index = last_var_index = 0;
+		}
+	SEMICOLON KBEGIN declarations statements KEND KEND IDENT
+		{ 
+			dumpsymbol();
+			if (strcmp($1, $13)) {
+				yyerror("the identifier after the end of a function declaration must be the same identifier as the name given at the beginning of the declaration");
+			}
+			if (strcmp($<text>6, "error")) {
+				add_kind_and_type("function", $5);
 				add_attribute($<text>6);
 			}
 		}
 
 declaration :
-	KVAR identifier_list COLON type SEMICOLON { add_kind_and_type("variable", $4); }
+	KVAR identifier_list COLON type SEMICOLON
+		{
+			for (int i = 0; i < cur_var_index; i++) {
+				add_symbol(var_symbols[i]);
+				add_kind_and_type("variable", $4);
+			}
+			cur_var_index = 0;
+		}
 	| KVAR identifier_list COLON literal_constant SEMICOLON
 		{
-			add_kind_and_type("constant", $4.type);
+			for (int i = 0; i < cur_var_index; i++) {
+				add_symbol(var_symbols[i]);
+				add_kind_and_type("constant", $4.type);
+			}
+			cur_var_index = 0;
 			char attr[100];
 			if (!strcmp($4.type, "integer"))
 				sprintf(attr, "%d", $4.data.integer);
@@ -181,12 +207,12 @@ simple :
 				char message[100] = "constant '";
 				strcat( strcat(message, $1.symbol), "' cannot be assigned");
 				yyerror(message);
-			} else if (is_array_type($1.type) || is_array_type($3.type)) {
-				yyerror("array arithmetic is not allowed");
 			} else if ( strcmp($1.type, $3.type) && (strcmp($1.type, "real") || strcmp($3.type, "integer")) ) {
 				/* If $3.type is empty, then there must be error in deciding its type and thus no need to print error */
 				if (strcmp($3.type, ""))
 					yyerror("the type of the left-hand side must be the same as that of the right-hand side");
+			} else if (is_array_type($1.type) || is_array_type($3.type)) {
+				yyerror("array arithmetic is not allowed");
 			}
 		}
 	| KPRINT variable_reference SEMICOLON
@@ -211,6 +237,10 @@ for :
 
 return :
 	KRET expression SEMICOLON
+	{
+		if (top == 0)
+			yyerror("program has no return value");
+	}
 
 procedure_call :
 	function_invocation SEMICOLON
@@ -276,8 +306,8 @@ index_references :
 programname	: IDENT
 
 identifier_list :
-	IDENT {add_symbol($1);}
-	| IDENT {add_symbol($1);} COMMA identifier_list
+	IDENT { var_symbols[cur_var_index++] = strdup($1); }
+	| IDENT { var_symbols[cur_var_index++] = strdup($1); } COMMA identifier_list
 
 scalar_type :
 	KINTEGER | KREAL | KSTRING | KBOOL
@@ -331,7 +361,7 @@ arguments :
 	| argument SEMICOLON arguments
 
 argument :
-	identifier_list COLON type { $$ = $3; add_kind_and_type("parameter", $3); }
+	identifier_list COLON type { add_var_type($3); }
 
 return_type :
 	/* empty */ { $$ = "void"; }
@@ -416,6 +446,14 @@ void add_symbol(char* name)
 		if (DEBUG2)
 			printf("------------Add symbol: %s\n", name);
 	}
+}
+
+void add_var_type(char* type)
+{
+	for (int i = last_var_index; i < cur_var_index; i++){
+		var_types[i] = strdup(type);
+	}
+	last_var_index = cur_var_index;
 }
 
 void add_kind_and_type(char* kind, char* type)
