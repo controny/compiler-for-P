@@ -47,6 +47,9 @@ char* get_type_of_arithmetic_operator();
 char* get_type_of_relational_operator();
 char* get_type_of_boolean_operator();
 void check_conditional_expression();
+int is_array_type();
+int get_splited_parameters();
+int parameters_match();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -229,7 +232,7 @@ function_invocation :
 				char message[100] = "function ";
 				strcat( strcat(message, $1), " is not declared");
 				yyerror(message);
-			} else if (strcmp(param_types, $3.type)) {
+			} else if (!parameters_match(strdup(param_types), strdup($3.type))) {
 				yyerror("the types of the actual parameters must be identical to the types of the formal parameters");
 			} else {
 				$$.type = return_type;
@@ -614,6 +617,39 @@ int is_array_type(char* t)
 		if (t[i] == '[')
 			return 1;
 	return 0;
+}
+
+int get_splited_parameters(char* str, char* delim, char** result)
+{
+	char* token = strtok(str, delim);
+	int i = 0;
+	while (token) {
+		result[i++] = strdup(token);
+		token = strtok(NULL, delim);
+	}
+	/* Return the number of tokens */
+	return i;
+}
+
+int parameters_match(char* formal_params_str, char* actual_params_str)
+{
+	char* delim = ",";
+	char* formal_params[20];
+	char* actual_params[20];
+	int num_fparams = get_splited_parameters(formal_params_str, delim, formal_params);
+	int num_aparams = get_splited_parameters(actual_params_str, delim, actual_params);
+	/* Compare the number of parameters */
+	if (num_fparams != num_aparams)
+		return 0;
+	for (int i = 0; i < num_fparams; i++) {
+		/* Consider coercion */
+		if ( (!strcmp(formal_params[i], "real") || !strcmp(formal_params[i], " real") )
+			&& (!strcmp(actual_params[i], "integer") || !strcmp(actual_params[i], " integer")) )
+			continue;
+		if (strcmp(formal_params[i], actual_params[i]))
+			return 0;
+	}
+	return 1;
 }
 
 int  main( int argc, char **argv )
