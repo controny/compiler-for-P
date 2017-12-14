@@ -140,6 +140,7 @@ function :
 				$<text>$ = strdup(attributes);
 			}
 			cur_var_index = last_var_index = 0;
+			cur_func_type = strdup($5);
 		}
 	SEMICOLON KBEGIN declarations statements KEND KEND IDENT
 		{ 
@@ -151,6 +152,7 @@ function :
 				add_kind_and_type("function", $5);
 				add_attribute($<text>6);
 			}
+			cur_func_type = NULL;
 		}
 
 declaration :
@@ -238,8 +240,10 @@ for :
 return :
 	KRET expression SEMICOLON
 	{
-		if (top == 0)
+		if (!cur_func_type)
 			yyerror("program has no return value");
+		else if (strcmp($2.type, cur_func_type))
+			yyerror("return type mismatch");
 	}
 
 procedure_call :
