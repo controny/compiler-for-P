@@ -113,7 +113,7 @@ function :
 				&& strcmp($5, "string")
 				&& strcmp($5, "bool")
 				&& strcmp($5, "void")) {
-				yyerror("the return value must be a scalar type");
+				yyerror("a function cannot return an array type");
 				$<text>$ = "error";
 			} else {
 				for (int i = 0; i < cur_var_index; i++)
@@ -153,7 +153,7 @@ function :
 		{ 
 			dumpsymbol();
 			if (strcmp($1, $13)) {
-				yyerror("the identifier after the end of a function declaration must be the same identifier as the name given at the beginning of the declaration");
+				yyerror("function end ID inconsist with the beginning ID");
 			}
 			if (strcmp($<text>6, "error")) {
 				add_kind_and_type("function", $5);
@@ -166,8 +166,10 @@ declaration :
 	KVAR identifier_list COLON type SEMICOLON
 		{
 			for (int i = 0; i < cur_var_index; i++) {
-				add_symbol(var_symbols[i]);
-				add_kind_and_type("variable", $4);
+				if (strcmp($4, "error")) {
+					add_symbol(var_symbols[i]);
+					add_kind_and_type("variable", $4);
+				}
 			}
 			cur_var_index = 0;
 		}
@@ -217,9 +219,9 @@ simple :
 				strcat( strcat(message, $1.symbol), "\' cannot be assigned");
 				yyerror(message);
 			} else if ( strcmp($1.type, $3.type) && (strcmp($1.type, "real") || strcmp($3.type, "integer")) ) {
-				/* If $3.type is empty, then there must be error in deciding its type and thus no need to print error */
-				if (strcmp($3.type, ""))
-					yyerror("the type of the left-hand side must be the same as that of the right-hand side");
+				char message[100] = "type mismatch, LHS= ";
+				strcat( strcat( strcat(message, $1.type), ", RHS= "), $3.type);
+				yyerror(message);
 			} else if (is_array_type($1.type) || is_array_type($3.type)) {
 				yyerror("array arithmetic is not allowed");
 			}
@@ -248,7 +250,7 @@ return :
 	KRET expression SEMICOLON
 	{
 		if (!cur_func_type)
-			yyerror("program has no return value");
+			yyerror("program cannot be returned");
 		else if (strcmp($2.type, cur_func_type))
 			yyerror("return type mismatch");
 	}
@@ -259,6 +261,7 @@ procedure_call :
 function_invocation :
 	IDENT LPAREN expressions RPAREN
 		{
+			$$.type = "";
 			char* param_types = NULL;
 			char* return_type;
 			for (int scope = top; scope >= 0; scope--) {
@@ -270,11 +273,11 @@ function_invocation :
 				}
 			}
 			if (!param_types) {
-				char message[100] = "function ";
-				strcat( strcat(message, $1), " is not declared");
+				char message[100] = "symbol '";
+				strcat( strcat(message, $1), "' not found");
 				yyerror(message);
 			} else if (!parameters_match(strdup(param_types), strdup($3.type))) {
-				yyerror("the types of the actual parameters must be identical to the types of the formal parameters");
+				yyerror("parameter type mismatch");
 			} else {
 				$$.type = return_type;
 			}
@@ -329,8 +332,8 @@ type :
 	scalar_type
 	| KARRAY integer_literal KTO integer_literal KOF type
 		{
-			if ($2.data.integer > $4.data.integer) {
-				yyerror("the index of the lower bound must be smaller than that of the upper bound");
+			if ($2.data.integer >= $4.data.integer) {
+				yyerror("lower bound must be smaller than upper bound");
 				$$ = "error";
 			} else {
 				char int_str[10];
@@ -604,7 +607,7 @@ struct Constant get_value_of_identifier(char *identifier)
 		yyerror("the value of the loop variable cannot be changed inside the loop");
 	} else {
 		char message[100] = "symbol '";
-		strcat( strcat(message, identifier), "'' is not declared");
+		strcat( strcat(message, identifier), "' is not declared");
 		yyerror(message);
 	}
 	ret.type = "error";
