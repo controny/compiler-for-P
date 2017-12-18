@@ -1,5 +1,5 @@
 parser: y.tab.c lex.yy.c
-	gcc lex.yy.c y.tab.c -ly -lfl -o parser
+	gcc -g lex.yy.c y.tab.c -ly -lfl -o parser
 
 lex.yy.c: lex.l y.tab.h
 	flex lex.l
