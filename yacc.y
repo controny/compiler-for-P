@@ -39,6 +39,9 @@ int cur_var_index, last_var_index;
 and empty string means not in a function scope */
 char* cur_func_type;
 
+/* File pointer to java assembly code file */
+FILE* code_fp;
+
 void add_table();
 void add_symbol();
 void add_kind_and_type();
@@ -58,6 +61,7 @@ void check_conditional_expression();
 int is_array_type();
 int get_splited_parameters();
 int parameters_match();
+void write_assembly_code();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -91,6 +95,10 @@ program	:
 				yyerror("program beginning ID inconsist with file name");
 			add_symbol($1);
 			add_kind_and_type("program", "void");
+			char assembly[100] = "; ";
+			strcat( strcat(assembly, file_name), ".j\n.class public " );
+			strcat( strcat(assembly, file_name), "\n.super java/lang/Object\n\n" );
+			write_assembly_code(assembly);
 		}
 	programbody
 	KEND IDENT
@@ -170,6 +178,20 @@ declaration :
 					add_symbol(var_symbols[i]);
 					add_kind_and_type("variable", $4);
 				}
+				// Add global variables in assembly code
+				if (!top) {
+					char assembly[50] = ".field public static ";
+					strcat(assembly, var_symbols[i]);
+					char* type_descriptor;
+					if (!strcmp($4, "integer"))
+						type_descriptor = " I\n";
+					else if (!strcmp($4, "boolean"))
+						type_descriptor = " Z\n";
+					else if (!strcmp($4, "real"))
+						type_descriptor = " F\n";
+					strcat(assembly, type_descriptor);
+					write_assembly_code(assembly);
+				}
 			}
 			cur_var_index = 0;
 		}
@@ -208,8 +230,18 @@ statements :
 	| statement statements
 
 compound :
-	KBEGIN {add_table();}
-	declarations statements KEND {dumpsymbol();}
+	KBEGIN
+		{
+			if (!top)
+				write_assembly_code(".method public static main([Ljava/lang/String;)V\n\t.limit stack 15\n");
+			add_table();
+		}
+	declarations statements KEND
+		{
+			dumpsymbol();
+			if (!top)
+				write_assembly_code("\treturn\n.end method\n");
+		}
 
 simple :
 	variable_reference ASSIGN expression SEMICOLON
@@ -708,6 +740,14 @@ int parameters_match(char* formal_params_str, char* actual_params_str)
 	return 1;
 }
 
+void write_assembly_code(char* assembly)
+{
+	fprintf(code_fp, assembly);
+	char comment[100];
+	sprintf(comment, "; Line #%d:\t%s\n", linenum, buf);
+	fprintf(code_fp, comment);
+}
+
 int  main( int argc, char **argv )
 {
 	if( argc != 2 ) {
@@ -728,6 +768,12 @@ int  main( int argc, char **argv )
 		exit(-1);
 	}
 	
+	code_fp = fopen( strcat(strdup(file_name), ".j"), "w");
+	if (code_fp == NULL) {
+		printf("Open code file error\n");
+		exit(-1);
+	}
+
 	yyin = fp;
 	yyparse();
 
