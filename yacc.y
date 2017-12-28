@@ -611,6 +611,7 @@ struct Constant get_value_of_identifier(char *identifier)
 		yyerror(message);
 	}
 	ret.type = "error";
+	ret.kind = "error";
 	return ret;
 }
 
