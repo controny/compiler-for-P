@@ -42,6 +42,9 @@ char* cur_func_type;
 /* File pointer to java assembly code file */
 FILE* code_fp;
 
+char* jvm_var_stack[200];
+int next_var_num = 1;
+
 void add_table();
 void add_symbol();
 void add_kind_and_type();
@@ -61,6 +64,9 @@ void check_conditional_expression();
 int is_array_type();
 int get_splited_parameters();
 int parameters_match();
+int get_local_var_num();
+char* get_jvm_type_descriptor();
+void write_print_code();
 void write_assembly_code();
 %}
 
@@ -97,7 +103,7 @@ program	:
 			add_kind_and_type("program", "void");
 			char assembly[100] = "; ";
 			strcat( strcat(assembly, file_name), ".j\n.class public " );
-			strcat( strcat(assembly, file_name), "\n.super java/lang/Object\n\n" );
+			strcat( strcat(assembly, file_name), "\n.super java/lang/Object\n.field public static _sc Ljava/util/Scanner;\n" );
 			write_assembly_code(assembly);
 		}
 	programbody
@@ -178,19 +184,14 @@ declaration :
 					add_symbol(var_symbols[i]);
 					add_kind_and_type("variable", $4);
 				}
-				// Add global variables in assembly code
 				if (!top) {
-					char assembly[50] = ".field public static ";
-					strcat(assembly, var_symbols[i]);
-					char* type_descriptor;
-					if (!strcmp($4, "integer"))
-						type_descriptor = " I\n";
-					else if (!strcmp($4, "boolean"))
-						type_descriptor = " Z\n";
-					else if (!strcmp($4, "real"))
-						type_descriptor = " F\n";
-					strcat(assembly, type_descriptor);
+					// Add global variables in assembly code
+					char assembly[50];
+					char* type_descriptor = get_jvm_type_descriptor($4);
+					sprintf(assembly, ".field public static %s %s", var_symbols[i], type_descriptor);
 					write_assembly_code(assembly);
+				} else {
+					jvm_var_stack[next_var_num++] = strdup(var_symbols[i]);
 				}
 			}
 			cur_var_index = 0;
@@ -200,6 +201,19 @@ declaration :
 			for (int i = 0; i < cur_var_index; i++) {
 				add_symbol(var_symbols[i]);
 				add_kind_and_type("constant", $4.type);
+				char assembly[50];
+				if (!top) {
+					// Add global variables in assembly code
+					char* type_descriptor = get_jvm_type_descriptor($4.type);
+					sprintf(assembly, ".field public static %s %s", var_symbols[i], type_descriptor);
+					write_assembly_code(assembly);
+					sprintf(assembly, "putstatic %s/%s %s", file_name, var_symbols[i], type_descriptor);
+					write_assembly_code(assembly);
+				} else {
+					jvm_var_stack[next_var_num++] = strdup(var_symbols[i]);
+					sprintf(assembly, "istore %d", get_local_var_num(var_symbols[i]));
+					write_assembly_code(assembly);
+				}
 			}
 			cur_var_index = 0;
 			char attr[100];
@@ -232,15 +246,21 @@ statements :
 compound :
 	KBEGIN
 		{
-			if (!top)
-				write_assembly_code(".method public static main([Ljava/lang/String;)V\n\t.limit stack 15\n");
+			if (!top) {
+				write_assembly_code(".method public static main([Ljava/lang/String;)V\n\t.limit stack 15");
+				// In the beginning of main block, create an instance of java.util.Scanner
+				write_assembly_code("new java/util/Scanner\ndup\ngetstatic java/lang/System/in Ljava/io/InputStream;\ninvokespecial java/util/Scanner/<init>(Ljava/io/InputStream;)V");
+				char assembly[100];
+				sprintf(assembly, "putstatic %s/_sc Ljava/util/Scanner;", file_name);
+				write_assembly_code(assembly);
+			}
 			add_table();
 		}
 	declarations statements KEND
 		{
 			dumpsymbol();
 			if (!top)
-				write_assembly_code("\treturn\n.end method\n");
+				write_assembly_code("\treturn\n.end method");
 		}
 
 simple :
@@ -257,10 +277,40 @@ simple :
 			} else if (is_array_type($1.type) || is_array_type($3.type)) {
 				yyerror("array arithmetic is not allowed");
 			}
+			char assembly[50];
+			if ($1.global) {
+				sprintf(assembly, "putstatic %s/%s %s", file_name, $1.symbol, get_jvm_type_descriptor($1.type));
+			} else {
+				sprintf(assembly, "istore %d", get_local_var_num($1.symbol));
+			}
+			write_assembly_code(assembly);
 		}
-	| KPRINT variable_reference SEMICOLON
-	| KPRINT expression SEMICOLON
+	| KPRINT
+		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
+	variable_reference SEMICOLON
+		{ write_print_code($3.type); }
+	| KPRINT
+		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
+	expression SEMICOLON
+		{ write_print_code($3.type); }
 	| KREAD variable_reference SEMICOLON
+		{
+			char* method_name;
+			char* store = "istore";
+			if (!strcmp($2.type, "integer"))
+				method_name = "Int";
+			else if (!strcmp($2.type, "boolean"))
+				method_name = "Boolean";
+			else {
+				method_name = "Float";
+				store = "fstore";
+			}
+			char assembly[100];
+			sprintf(assembly,
+				"getstatic %s/_sc Ljava/util/Scanner;\ninvokevirtual java/util/Scanner/next%s()%s\n%s %d",
+				file_name, method_name, get_jvm_type_descriptor($2.type), store, get_local_var_num($2.symbol));
+			write_assembly_code(assembly);
+		}
 
 conditional : 
 	KIF expression KTHEN statements KELSE statements KEND KIF { check_conditional_expression($2); }
@@ -316,7 +366,19 @@ function_invocation :
 		}
 
 variable_reference :
-	IDENT { $$ = get_value_of_identifier($1); }
+	IDENT
+		{
+			$$ = get_value_of_identifier($1);
+			int var_num = get_local_var_num($1);
+			char assembly[50];
+			/*
+			if (!strcmp($$.type, "integer"))
+				sprintf(assembly, "iload %d", var_num);
+			else
+				sprintf(assembly, "fload %d", var_num);
+			write_assembly_code(assembly);
+			*/
+		}
 	| array_reference
 
 array_reference : 
@@ -392,7 +454,27 @@ integer_literal :
 	PINT | ZERO
 
 literal_constant :
-	integer_literal | REAL | STRING {$$.data.text = strdup($1.data.text);} | KTRUE | KFALSE
+	integer_literal
+		{
+			char assembly[50];
+			sprintf(assembly, "bipush %d", $1.data.integer);
+			write_assembly_code(assembly);
+		}
+	| REAL
+		{
+			char assembly[50];
+			sprintf(assembly, "ldc %lf", $1.data.real);
+			write_assembly_code(assembly);
+		}
+	| STRING
+		{
+			$$.data.text = strdup($1.data.text);
+			char assembly[50];
+			sprintf(assembly, "ldc %s", $1.data.text);
+			write_assembly_code(assembly);
+		}
+	| KTRUE { write_assembly_code("iconst_1"); }
+	| KFALSE { write_assembly_code("iconst_0"); }
 
 expressions :
 	/* empty */ { $$.type = ""; }
@@ -624,6 +706,13 @@ struct Constant get_value_of_identifier(char *identifier)
 	for (int scope = top; scope >= 0; scope--) {
 		for (int i = 0; i < cur_index[scope]; i++) {
 			if (!strcmp(identifier, stack[scope][i].name)) {
+				if (!scope) {
+					ret.global = 1;
+					char assembly[50];
+					char* type_descriptor = get_jvm_type_descriptor(stack[scope][i].type);
+					sprintf(assembly, "getstatic %s/%s %s", file_name, identifier, type_descriptor);
+					write_assembly_code(assembly);
+				}
 				ret.type = stack[scope][i].type;
 				ret.kind = stack[scope][i].kind;
 				ret.symbol = stack[scope][i].name;
@@ -740,11 +829,42 @@ int parameters_match(char* formal_params_str, char* actual_params_str)
 	return 1;
 }
 
+char* get_jvm_type_descriptor(char* type)
+{
+	char* type_descriptor;
+	if (!strcmp(type, "integer"))
+		type_descriptor = "I";
+	else if (!strcmp(type, "boolean"))
+		type_descriptor = "Z";
+	else if (!strcmp(type, "real"))
+		type_descriptor = "F";
+	return type_descriptor;
+}
+
+int get_local_var_num(char* name)
+{
+	for (int i = next_var_num-1; i > 0; i--)
+		if (!strcmp(jvm_var_stack[i], name))
+			return i;
+}
+
+void write_print_code(char* type)
+{
+	char* java_type;
+	if (!strcmp(type, "string"))
+		java_type = "Ljava/lang/String;";
+	else
+		java_type = get_jvm_type_descriptor(type);
+	char assembly[100];
+	sprintf(assembly, "invokevirtual java/io/PrintStream/print(%s)V", java_type);
+	write_assembly_code(assembly);
+}
+
 void write_assembly_code(char* assembly)
 {
 	fprintf(code_fp, assembly);
 	char comment[100];
-	sprintf(comment, "; Line #%d:\t%s\n", linenum, buf);
+	sprintf(comment, "\t\t\t\t\t; Line #%d:\t%s\n", linenum, buf);
 	fprintf(code_fp, comment);
 }
 

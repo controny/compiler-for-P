@@ -112,10 +112,10 @@ identifier ({letter})({letter}|{digit})*
 				strContent[wrt_idx] = '\0';
 				yylval.constant.type = "string";
 				yylval.constant.data.text = yytext;
-				return STRING;
 				if (Opt_T){
 					printf("<%s: %s>\n", "string", strContent);
 				}
+				return STRING;
 			}
 
 "//&"[A-Z][+-][^\n]*		{ /* pseudo comment */

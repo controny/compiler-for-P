@@ -5,3 +5,4 @@ y.tab.c
 y.tab.h
 *.j
 *.jar
+*.class
