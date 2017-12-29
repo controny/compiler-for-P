@@ -349,18 +349,46 @@ while :
 	KWHILE
 		{
 			$<count>$ = label_postfix++;
-			add_label_postfix("Lbegin_%d", $<count>$);
+			add_label_postfix("Lbegin_%d:", $<count>$);
 		}
-	expression KDO statements KEND KDO { check_conditional_expression($3); }
+	expression KDO
+		{
+			add_label_postfix("ifeq Lexit_%d", $<count>2);
+		}
+	statements KEND KDO
+		{
+			check_conditional_expression($3);
+			add_label_postfix("goto Lbegin_%d\nLexit_%d:", $<count>2, $<count>2);
+		}
 
 for :
 	KFOR IDENT { add_iter_variable($2); }
-	ASSIGN integer_literal KTO integer_literal
+	ASSIGN integer_literal
 		{
-			if ($5.data.integer > $7.data.integer)
-				yyerror("the loop parameter must be in the incremental order");
+			$<count>$ = label_postfix++;
+			jvm_var_stack[next_var_num++] = strdup($2);
+			char assembly[200];
+			sprintf(assembly, "bipush %d\nistore %d\nLbegin_%d", $5.data.integer, next_var_num-1, $<count>$);
+			write_assembly_code(assembly);
 		}
-	KDO statements KEND KDO { iter_stack_pop(); }
+	KTO integer_literal
+		{
+			if ($5.data.integer > $8.data.integer)
+				yyerror("the loop parameter must be in the incremental order");
+			char assembly[200];
+			sprintf(assembly,
+				"iload %d\nbipush %d\nisub\niflt Ltrue_%d\niconst_0\ngoto Lfalse_%d\nLtrue_%d:\niconst_1\nLfalse_%d:\nifeq Lexit_%d",
+				get_local_var_num($2), $8.data.integer+1, 
+				$<count>6, $<count>6, $<count>6, $<count>6, $<count>6);
+			write_assembly_code(assembly);
+		}
+	KDO statements KEND KDO
+		{
+			iter_stack_pop();
+			char assembly[100];
+			sprintf(assembly, "goto Lbegin_%d\nLexit_%d:", $<count>6, $<count>6);
+			write_assembly_code(assembly);
+		}
 
 return :
 	KRET expression SEMICOLON
