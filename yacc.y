@@ -45,6 +45,9 @@ FILE* code_fp;
 char* jvm_var_stack[200];
 int next_var_num = 1;
 
+/* To differentiate labels */
+int label_postfix;
+
 void add_table();
 void add_symbol();
 void add_kind_and_type();
@@ -68,6 +71,7 @@ int get_local_var_num();
 char* get_jvm_type_descriptor();
 void write_print_code();
 void write_assembly_code();
+void add_label_postfix();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -313,8 +317,31 @@ simple :
 		}
 
 conditional : 
-	KIF expression KTHEN statements KELSE statements KEND KIF { check_conditional_expression($2); }
-	| KIF expression KTHEN statements KEND KIF { check_conditional_expression($2); }
+	KIF expression KTHEN
+		{
+			$<count>$ = label_postfix++;
+			add_label_postfix("ifeq Lelse_%d", $<count>$);
+		}
+	statements KELSE
+		{
+			add_label_postfix("goto Lexit_%d", $<count>4);
+			add_label_postfix("Lelse_%d:", $<count>4);
+		}
+	statements KEND KIF
+		{
+			check_conditional_expression($2);
+			add_label_postfix("Lexit_%d:", $<count>4);
+		}
+	| KIF expression KTHEN
+		{
+			$<count>$ = label_postfix++;
+			add_label_postfix("ifeq Lexit_%d", $<count>$);
+		}
+	statements KEND KIF
+		{
+			check_conditional_expression($2);
+			add_label_postfix("Lexit_%d:", $<count>4);
+		}
 
 while :
 	KWHILE expression KDO statements KEND KDO { check_conditional_expression($2); }
@@ -866,6 +893,13 @@ void write_assembly_code(char* assembly)
 	char comment[100];
 	sprintf(comment, "\t\t\t\t\t; Line #%d:\t%s\n", linenum, buf);
 	fprintf(code_fp, comment);
+}
+
+void add_label_postfix(char* label, int postfix)
+{
+	char assembly[50];
+	sprintf(assembly, label, postfix);
+	write_assembly_code(assembly);
 }
 
 int  main( int argc, char **argv )
