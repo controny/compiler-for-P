@@ -72,6 +72,8 @@ char* get_jvm_type_descriptor();
 void write_print_code();
 void write_assembly_code();
 void add_label_postfix();
+void add_relop_code();
+void add_ariop_code();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -344,7 +346,12 @@ conditional :
 		}
 
 while :
-	KWHILE expression KDO statements KEND KDO { check_conditional_expression($2); }
+	KWHILE
+		{
+			$<count>$ = label_postfix++;
+			add_label_postfix("Lbegin_%d", $<count>$);
+		}
+	expression KDO statements KEND KDO { check_conditional_expression($3); }
 
 for :
 	KFOR IDENT { add_iter_variable($2); }
@@ -541,35 +548,85 @@ expression :
 			} else {
 				$$.type = get_type_of_arithmetic_operator($1, $3);
 			}
+			add_ariop_code("iadd", "fadd", $$.type);
 		}
-	| expression MINUS expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
-	| expression MULTIP expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
-	| expression DIVIDE expression { $$.type = get_type_of_arithmetic_operator($1, $3); }
+	| expression MINUS expression
+		{
+			$$.type = get_type_of_arithmetic_operator($1, $3);
+			add_ariop_code("isub", "fsub", $$.type);
+		}
+	| expression MULTIP expression
+		{
+			$$.type = get_type_of_arithmetic_operator($1, $3);
+			add_ariop_code("imul", "fmul", $$.type);
+		}
+	| expression DIVIDE expression
+		{
+			$$.type = get_type_of_arithmetic_operator($1, $3);
+			add_ariop_code("idiv", "fdiv", $$.type);
+		}
 	| expression MOD expression
 		{
 			if (strcmp($1.type, "integer") || strcmp($3.type, "integer"))
 				yyerror("the operands must be integer types");
 			else
 				$$.type = "integer";
+			add_ariop_code("irem", "", $$.type);
 		}
 	| MINUS expression %prec MULTIP
+		{
+			add_ariop_code("ineg", "fneg", $2.type);
+		}
 	| LPAREN expression RPAREN
 
 boolean_expression :
-	expression LESS expression { $$.type = get_type_of_relational_operator($1, $3); }
-	| expression LESSEQ expression { $$.type = get_type_of_relational_operator($1, $3); }
-	| expression NOTEQ expression { $$.type = get_type_of_relational_operator($1, $3); }
-	| expression GREQ expression { $$.type = get_type_of_relational_operator($1, $3); }
-	| expression GREATER expression { $$.type = get_type_of_relational_operator($1, $3); }
-	| expression EQ expression { $$.type = get_type_of_relational_operator($1, $3); }
-	| expression OR expression { $$.type = get_type_of_boolean_operator($1, $3); }
-	| expression AND expression { $$.type = get_type_of_boolean_operator($1, $3); }
+	expression LESS expression
+		{
+			$$.type = get_type_of_relational_operator($1, $3);
+			add_relop_code("iflt", $1.type);
+		}
+	| expression LESSEQ expression
+		{
+			$$.type = get_type_of_relational_operator($1, $3);
+			add_relop_code("ifle", $1.type);
+		}
+	| expression NOTEQ expression
+		{
+			$$.type = get_type_of_relational_operator($1, $3);
+			add_relop_code("ifne", $1.type);
+		}
+	| expression GREQ expression
+		{
+			$$.type = get_type_of_relational_operator($1, $3);
+			add_relop_code("ifge", $1.type);
+		}
+	| expression GREATER expression
+		{
+			$$.type = get_type_of_relational_operator($1, $3);
+			add_relop_code("ifgt", $1.type);
+		}
+	| expression EQ expression
+		{
+			$$.type = get_type_of_relational_operator($1, $3);
+			add_relop_code("ifeq", $1.type);
+		}
+	| expression OR expression
+		{
+			$$.type = get_type_of_boolean_operator($1, $3);
+			write_assembly_code("ior");
+		}
+	| expression AND expression
+		{
+			$$.type = get_type_of_boolean_operator($1, $3);
+			write_assembly_code("iand");
+		}
 	| NOT expression
 		{
 			if (strcmp($2.type, "boolean"))
 				yyerror("the operand must be boolean type");
 			else
 				$$.type = "boolean";
+			write_assembly_code("ixor");
 		}
 
 %%
@@ -900,6 +957,29 @@ void add_label_postfix(char* label, int postfix)
 	char assembly[50];
 	sprintf(assembly, label, postfix);
 	write_assembly_code(assembly);
+}
+
+void add_relop_code(char* op, char* type)
+{
+	char assembly[200];
+	char* cmp;
+	if (!strcmp(type, "integer"))
+		cmp = "isub";
+	else
+		cmp = "fcmpl";
+	sprintf(assembly,
+		"%s\n%s Ltrue_%d\niconst_0\ngoto Lfalse_%d\nLtrue_%d:\niconst_1\nLfalse_%d:",
+		cmp, op, label_postfix, label_postfix, label_postfix, label_postfix);
+	label_postfix++;
+	write_assembly_code(assembly);
+}
+
+void add_ariop_code(char* int_op, char* real_op, char* type)
+{
+	if (!strcmp(type, "integer"))
+		write_assembly_code(int_op);
+	else
+		write_assembly_code(real_op);
 }
 
 int  main( int argc, char **argv )
