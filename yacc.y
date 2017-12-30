@@ -8,6 +8,7 @@
 #define DEBUG2 0
 #define MAX_TABLE_NUMBER 512
 #define MAX_TABLE_SIZE 512
+#define MAX_NUM_LOCALS 128
 
 extern int linenum;             /* declared in lex.l */
 extern FILE *yyin;              /* declared by lex */
@@ -42,8 +43,10 @@ char* cur_func_type;
 /* File pointer to java assembly code file */
 FILE* code_fp;
 
-char* jvm_var_stack[200];
-int next_var_num = 1;
+/* A stack made up of frames, which contain local variables */
+char** local_vars_stack[50];
+int cur_frame_num;
+int next_var_num;
 
 /* To differentiate labels */
 int label_postfix;
@@ -74,6 +77,9 @@ void write_assembly_code();
 void add_label_postfix();
 void add_relop_code();
 void add_ariop_code();
+void set_locals_limit();
+void add_local_var_to_stack();
+void load_variable();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -128,6 +134,7 @@ programbody :
 function :
 	IDENT LPAREN arguments RPAREN return_type
 		{
+			$<text>$ = "";
 			if (strcmp($5, "integer")
 				&& strcmp($5, "real")
 				&& strcmp($5, "string")
@@ -145,6 +152,8 @@ function :
 			if (strcmp($<text>$, "error"))
 				add_symbol($1);
 			add_table();
+			char assembly[200];
+			sprintf(assembly, ".method public static %s(", $1);
 			for (int i = 0; i < cur_var_index; i++) {
 				if (strcmp(var_types[i], "error")) {
 					add_symbol(var_symbols[i]);
@@ -162,12 +171,23 @@ function :
 							strcpy(attributes, stack[top][i].type);
 						else
 							strcat( strcat(attributes, ", "),  stack[top][i].type);
+						strcat(assembly, get_jvm_type_descriptor(stack[top][i].type));
 					}
 				}
 				$<text>$ = strdup(attributes);
 			}
 			cur_var_index = last_var_index = 0;
 			cur_func_type = strdup($5);
+			strcat( strcat(assembly, ")"), get_jvm_type_descriptor($5) );
+			write_assembly_code(assembly);
+			write_assembly_code(".limit stack 20");
+			set_locals_limit();
+			for (int i = 0; i < cur_index[top]; i++) {
+				if (!strcmp(stack[top][i].kind, "parameter")) {
+					// Add parameters to locals stack
+					add_local_var_to_stack(stack[top][i].name);
+				}
+			}
 		}
 	SEMICOLON KBEGIN declarations statements KEND KEND IDENT
 		{ 
@@ -180,6 +200,11 @@ function :
 				add_attribute($<text>6);
 			}
 			cur_func_type = NULL;
+			if (!strcmp($5, "void"))
+				write_assembly_code("return");
+			write_assembly_code(".end method");
+			cur_frame_num++;
+			next_var_num = 0;
 		}
 
 declaration :
@@ -197,7 +222,7 @@ declaration :
 					sprintf(assembly, ".field public static %s %s", var_symbols[i], type_descriptor);
 					write_assembly_code(assembly);
 				} else {
-					jvm_var_stack[next_var_num++] = strdup(var_symbols[i]);
+					add_local_var_to_stack(var_symbols[i]);
 				}
 			}
 			cur_var_index = 0;
@@ -216,7 +241,7 @@ declaration :
 					sprintf(assembly, "putstatic %s/%s %s", file_name, var_symbols[i], type_descriptor);
 					write_assembly_code(assembly);
 				} else {
-					jvm_var_stack[next_var_num++] = strdup(var_symbols[i]);
+					add_local_var_to_stack(var_symbols[i]);
 					sprintf(assembly, "istore %d", get_local_var_num(var_symbols[i]));
 					write_assembly_code(assembly);
 				}
@@ -252,6 +277,7 @@ statements :
 compound :
 	KBEGIN
 		{
+			// In addition to function, only global compound is a method
 			if (!top) {
 				write_assembly_code(".method public static main([Ljava/lang/String;)V\n\t.limit stack 15");
 				// In the beginning of main block, create an instance of java.util.Scanner
@@ -259,14 +285,19 @@ compound :
 				char assembly[100];
 				sprintf(assembly, "putstatic %s/_sc Ljava/util/Scanner;", file_name);
 				write_assembly_code(assembly);
+				set_locals_limit();
+				add_local_var_to_stack("");
 			}
 			add_table();
 		}
 	declarations statements KEND
 		{
 			dumpsymbol();
-			if (!top)
-				write_assembly_code("\treturn\n.end method");
+			if (!top) {
+				write_assembly_code("return\n.end method");
+				cur_frame_num++;
+				next_var_num = 0;
+			}
 		}
 
 simple :
@@ -282,7 +313,8 @@ simple :
 				yyerror(message);
 			} else if (is_array_type($1.type) || is_array_type($3.type)) {
 				yyerror("array arithmetic is not allowed");
-			}
+			} else if (!strcmp($1.kind, "iterative"))
+				yyerror("the value of the loop variable cannot be changed inside the loop");
 			char assembly[50];
 			if ($1.global) {
 				sprintf(assembly, "putstatic %s/%s %s", file_name, $1.symbol, get_jvm_type_descriptor($1.type));
@@ -293,7 +325,9 @@ simple :
 		}
 	| KPRINT
 		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
-	variable_reference SEMICOLON
+	variable_reference 
+		{ load_variable($3); }
+	SEMICOLON
 		{ write_print_code($3.type); }
 	| KPRINT
 		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
@@ -313,8 +347,14 @@ simple :
 			}
 			char assembly[100];
 			sprintf(assembly,
-				"getstatic %s/_sc Ljava/util/Scanner;\ninvokevirtual java/util/Scanner/next%s()%s\n%s %d",
-				file_name, method_name, get_jvm_type_descriptor($2.type), store, get_local_var_num($2.symbol));
+				"getstatic %s/_sc Ljava/util/Scanner;\ninvokevirtual java/util/Scanner/next%s()%s",
+				file_name, method_name, get_jvm_type_descriptor($2.type));
+			write_assembly_code(assembly);
+			if ($2.global) {
+				sprintf(assembly, "putstatic %s/%s %s", file_name, $2.symbol, get_jvm_type_descriptor($2.type));
+			} else {
+				sprintf(assembly, "%s %d", store, get_local_var_num($2.symbol));
+			}
 			write_assembly_code(assembly);
 		}
 
@@ -322,12 +362,7 @@ conditional :
 	KIF expression KTHEN
 		{
 			$<count>$ = label_postfix++;
-			add_label_postfix("ifeq Lelse_%d", $<count>$);
-		}
-	statements KELSE
-		{
-			add_label_postfix("goto Lexit_%d", $<count>4);
-			add_label_postfix("Lelse_%d:", $<count>4);
+			add_label_postfix("ifeq Lexit_%d", $<count>$);
 		}
 	statements KEND KIF
 		{
@@ -337,7 +372,12 @@ conditional :
 	| KIF expression KTHEN
 		{
 			$<count>$ = label_postfix++;
-			add_label_postfix("ifeq Lexit_%d", $<count>$);
+			add_label_postfix("ifeq Lelse_%d", $<count>$);
+		}
+	statements KELSE
+		{
+			add_label_postfix("goto Lexit_%d", $<count>4);
+			add_label_postfix("Lelse_%d:", $<count>4);
 		}
 	statements KEND KIF
 		{
@@ -358,7 +398,8 @@ while :
 	statements KEND KDO
 		{
 			check_conditional_expression($3);
-			add_label_postfix("goto Lbegin_%d\nLexit_%d:", $<count>2, $<count>2);
+			add_label_postfix("goto Lbegin_%d", $<count>2);
+			add_label_postfix("Lexit_%d:", $<count>2);
 		}
 
 for :
@@ -366,9 +407,9 @@ for :
 	ASSIGN integer_literal
 		{
 			$<count>$ = label_postfix++;
-			jvm_var_stack[next_var_num++] = strdup($2);
+			add_local_var_to_stack($2);
 			char assembly[200];
-			sprintf(assembly, "bipush %d\nistore %d\nLbegin_%d", $5.data.integer, next_var_num-1, $<count>$);
+			sprintf(assembly, "bipush %d\nistore %d\nLbegin_%d:", $5.data.integer, next_var_num-1, $<count>$);
 			write_assembly_code(assembly);
 		}
 	KTO integer_literal
@@ -384,10 +425,13 @@ for :
 		}
 	KDO statements KEND KDO
 		{
-			iter_stack_pop();
 			char assembly[100];
-			sprintf(assembly, "goto Lbegin_%d\nLexit_%d:", $<count>6, $<count>6);
+			int local_var_num = get_local_var_num($2);
+			sprintf(assembly,
+				"iload %d\nbipush 1\niadd\nistore %d\ngoto Lbegin_%d\nLexit_%d:",
+				local_var_num, local_var_num, $<count>6, $<count>6);
 			write_assembly_code(assembly);
+			iter_stack_pop();
 		}
 
 return :
@@ -397,6 +441,7 @@ return :
 			yyerror("program cannot be returned");
 		else if (strcmp($2.type, cur_func_type))
 			yyerror("return type mismatch");
+		write_assembly_code("ireturn");
 	}
 
 procedure_call :
@@ -425,21 +470,24 @@ function_invocation :
 			} else {
 				$$.type = return_type;
 			}
+
+			char params_str[20] = "";
+			char* params_array[20];
+			int num_params = get_splited_parameters(param_types, ",", params_array);
+			for (int i = 0; i < num_params; i++) {
+				strcat(params_str, get_jvm_type_descriptor(params_array[i]));
+			}
+			char assembly[50];
+			sprintf(assembly,
+				"invokestatic %s/%s(%s)%s",
+				file_name, $1, params_str, get_jvm_type_descriptor(return_type));
+			write_assembly_code(assembly);
 		}
 
 variable_reference :
 	IDENT
 		{
 			$$ = get_value_of_identifier($1);
-			int var_num = get_local_var_num($1);
-			char assembly[50];
-			/*
-			if (!strcmp($$.type, "integer"))
-				sprintf(assembly, "iload %d", var_num);
-			else
-				sprintf(assembly, "fload %d", var_num);
-			write_assembly_code(assembly);
-			*/
 		}
 	| array_reference
 
@@ -563,6 +611,9 @@ return_type :
 expression_component :
 	literal_constant
 	| variable_reference
+		{
+			load_variable($1);
+		}
 	| function_invocation
 
 expression :
@@ -815,15 +866,12 @@ struct Constant get_value_of_identifier(char *identifier)
 {
 	struct Constant ret;
 	/* Scan every scope from top to bottom */
+	ret.global = 0;
 	for (int scope = top; scope >= 0; scope--) {
 		for (int i = 0; i < cur_index[scope]; i++) {
 			if (!strcmp(identifier, stack[scope][i].name)) {
 				if (!scope) {
 					ret.global = 1;
-					char assembly[50];
-					char* type_descriptor = get_jvm_type_descriptor(stack[scope][i].type);
-					sprintf(assembly, "getstatic %s/%s %s", file_name, identifier, type_descriptor);
-					write_assembly_code(assembly);
 				}
 				ret.type = stack[scope][i].type;
 				ret.kind = stack[scope][i].kind;
@@ -837,14 +885,16 @@ struct Constant get_value_of_identifier(char *identifier)
 		if (!strcmp(identifier, iter_stack[i]))
 			is_loop_variable = 1;
 	if (is_loop_variable) {
-		yyerror("the value of the loop variable cannot be changed inside the loop");
+		ret.type = "integer";
+		ret.kind = "iterative";
+		ret.symbol = identifier;
 	} else {
 		char message[100] = "symbol '";
 		strcat( strcat(message, identifier), "' is not declared");
 		yyerror(message);
+		ret.type = "error";
+		ret.kind = "error";
 	}
-	ret.type = "error";
-	ret.kind = "error";
 	return ret;
 }
 
@@ -943,21 +993,27 @@ int parameters_match(char* formal_params_str, char* actual_params_str)
 
 char* get_jvm_type_descriptor(char* type)
 {
-	char* type_descriptor;
+	char* type_descriptor = "";
 	if (!strcmp(type, "integer"))
 		type_descriptor = "I";
 	else if (!strcmp(type, "boolean"))
 		type_descriptor = "Z";
 	else if (!strcmp(type, "real"))
 		type_descriptor = "F";
+	else if (!strcmp(type, "void"))
+		type_descriptor = "V";
 	return type_descriptor;
 }
 
 int get_local_var_num(char* name)
 {
-	for (int i = next_var_num-1; i > 0; i--)
-		if (!strcmp(jvm_var_stack[i], name))
+	// Traverse in a reverse order
+	// to avoid getting outter variable with the same name
+	for (int i = next_var_num-1; i >= 0; i--) {
+		if (!strcmp(local_vars_stack[cur_frame_num][i], name)) {
 			return i;
+		}
+	}
 }
 
 void write_print_code(char* type)
@@ -976,7 +1032,7 @@ void write_assembly_code(char* assembly)
 {
 	fprintf(code_fp, assembly);
 	char comment[100];
-	sprintf(comment, "\t\t\t\t\t; Line #%d:\t%s\n", linenum, buf);
+	sprintf(comment, "\n; Line #%d:\t%s\n", linenum, buf);
 	fprintf(code_fp, comment);
 }
 
@@ -1008,6 +1064,35 @@ void add_ariop_code(char* int_op, char* real_op, char* type)
 		write_assembly_code(int_op);
 	else
 		write_assembly_code(real_op);
+}
+
+void set_locals_limit()
+{
+	char assembly[50];
+	sprintf(assembly, ".limit locals %d", MAX_NUM_LOCALS);
+	write_assembly_code(assembly);
+	local_vars_stack[cur_frame_num] = malloc( MAX_NUM_LOCALS * sizeof(char*) );
+}
+
+void add_local_var_to_stack(char* symbol)
+{
+	local_vars_stack[cur_frame_num][next_var_num++] = strdup(symbol);
+}
+
+void load_variable(struct Constant var)
+{
+	char assembly[50];
+	if (var.global) {
+		char* type_descriptor = get_jvm_type_descriptor(var.type);
+		sprintf(assembly, "getstatic %s/%s %s", file_name, var.symbol, type_descriptor);
+	} else {
+		int var_num = get_local_var_num(var.symbol);
+		if (!strcmp(var.type, "integer"))
+			sprintf(assembly, "iload %d", var_num);
+		else
+			sprintf(assembly, "fload %d", var_num);
+	}
+	write_assembly_code(assembly);
 }
 
 int  main( int argc, char **argv )
