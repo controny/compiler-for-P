@@ -48,6 +48,10 @@ char** local_vars_stack[50];
 int cur_frame_num;
 int next_var_num;
 
+/* Data structure for recording file position to insert back when parsing `if` */
+long int if_fp_offsets[10];
+int cur_if_fp_offsets_index;
+
 /* To differentiate labels */
 int label_postfix;
 
@@ -323,16 +327,6 @@ simple :
 			}
 			write_assembly_code(assembly);
 		}
-	| KPRINT
-		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
-	variable_reference 
-		{ load_variable($3); }
-	SEMICOLON
-		{ write_print_code($3.type); }
-	| KPRINT
-		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
-	expression SEMICOLON
-		{ write_print_code($3.type); }
 	| KREAD variable_reference SEMICOLON
 		{
 			char* method_name;
@@ -357,32 +351,53 @@ simple :
 			}
 			write_assembly_code(assembly);
 		}
+	| KPRINT
+		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
+	variable_reference 
+		{ load_variable($3); }
+	SEMICOLON
+		{ write_print_code($3.type); }
+	| KPRINT
+		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
+	expression SEMICOLON
+		{ write_print_code($3.type); }
 
 conditional : 
 	KIF expression KTHEN
 		{
-			$<count>$ = label_postfix++;
-			add_label_postfix("ifeq Lexit_%d", $<count>$);
+			if_fp_offsets[ ++cur_if_fp_offsets_index ] = ftell(code_fp);
+			// Leave an empty buffer for inserting later
+			char buffer[50];
+			memset(buffer, ' ', 50);
+			fwrite(buffer, sizeof(char), sizeof(buffer), code_fp);
+			fprintf(code_fp, "\n");
+			check_conditional_expression($2);
 		}
+	else_block
+
+else_block :
 	statements KEND KIF
 		{
-			check_conditional_expression($2);
-			add_label_postfix("Lexit_%d:", $<count>4);
+			int cur_label_postfix = label_postfix++;
+			// Add code back
+			fseek(code_fp, if_fp_offsets[ cur_if_fp_offsets_index-- ], SEEK_SET);
+			add_label_postfix("ifeq Lexit_%d", cur_label_postfix);
+			fseek(code_fp, 0, SEEK_END);
+			add_label_postfix("Lexit_%d:", cur_label_postfix);
 		}
-	| KIF expression KTHEN
+	| statements KELSE
 		{
 			$<count>$ = label_postfix++;
+			// Add code back
+			fseek(code_fp, if_fp_offsets[ cur_if_fp_offsets_index-- ], SEEK_SET);
 			add_label_postfix("ifeq Lelse_%d", $<count>$);
-		}
-	statements KELSE
-		{
-			add_label_postfix("goto Lexit_%d", $<count>4);
-			add_label_postfix("Lelse_%d:", $<count>4);
+			fseek(code_fp, 0, SEEK_END);
+			add_label_postfix("goto Lexit_%d", $<count>$);
+			add_label_postfix("Lelse_%d:", $<count>$);
 		}
 	statements KEND KIF
 		{
-			check_conditional_expression($2);
-			add_label_postfix("Lexit_%d:", $<count>4);
+			add_label_postfix("Lexit_%d:", $<count>3);
 		}
 
 while :
