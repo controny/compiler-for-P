@@ -1,13 +1,8 @@
 ## Changes
-** Scanner **
-1. Set corresponding `yylval` before returning tokens.
-2. Detect `Opt_D`.
-** Parser **
-1. Use pseudo-variable to present the value returned by the actions.
-2. Add some auxiliary global variables and functions.
+* Add specific syntax directed translations to generate code
 
 ## Abilities
-* Construct symbol tables and check whether there is any redeclaration.
+* Generate code in Java assembly language for the P language
 
 ## Platform
 Linux
@@ -15,5 +10,7 @@ Linux
 ## How to run
 ```
 make
-./parser [input file]
+./parser [program name].p
+java -jar jasmin.jar [program name].j
+java [program name]
 ```

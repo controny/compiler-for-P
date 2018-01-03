@@ -1,0 +1,290 @@
+; test1.j
+.class public test1
+.super java/lang/Object
+.field public static _sc Ljava/util/Scanner;
+
+; Line #3:	test1;
+.field public static a I
+; Line #5:	var a, b: integer;
+.field public static b I
+; Line #5:	var a, b: integer;
+.field public static d Z
+; Line #6:	var d: boolean;
+.method public static foo(I)V
+; Line #8:	foo( a: integer );
+.limit stack 20
+; Line #8:	foo( a: integer );
+.limit locals 128
+; Line #8:	foo( a: integer );
+bipush 0
+; Line #11:		result := 0
+istore 2
+; Line #11:		result := 0;
+bipush 1
+; Line #12:		i := 1
+istore 1
+; Line #12:		i := 1;
+Lbegin_0:
+; Line #13:		while
+iload 1
+; Line #13:		while i <=
+iload 0
+; Line #13:		while i <= a do
+isub
+ifle Ltrue_1
+iconst_0
+goto Lfalse_1
+Ltrue_1:
+iconst_1
+Lfalse_1:
+; Line #13:		while i <= a do
+ifeq Lexit_0
+; Line #13:		while i <= a do
+iload 2
+; Line #14:			result := result+
+iload 1
+; Line #14:			result := result+i;
+iadd
+; Line #14:			result := result+i;
+istore 2
+; Line #14:			result := result+i;
+iload 1
+; Line #15:			i := i+
+bipush 1
+; Line #15:			i := i+1
+iadd
+; Line #15:			i := i+1;
+istore 1
+; Line #15:			i := i+1;
+goto Lbegin_0
+; Line #16:		end do
+Lexit_0:
+; Line #16:		end do
+bipush 1
+istore 3
+Lbegin_2:
+; Line #17:		for i := 1
+iload 3
+bipush 101
+isub
+iflt Ltrue_2
+iconst_0
+goto Lfalse_2
+Ltrue_2:
+iconst_1
+Lfalse_2:
+ifeq Lexit_2
+; Line #17:		for i := 1 to 100
+iload 2
+; Line #18:			result := result+
+iload 3
+; Line #18:			result := result+i;
+iadd
+; Line #18:			result := result+i;
+istore 2
+; Line #18:			result := result+i;
+iload 3
+bipush 1
+iadd
+istore 3
+goto Lbegin_2
+Lexit_2:
+; Line #19:		end do
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #20:		print result
+iload 2
+; Line #20:		print result;
+invokevirtual java/io/PrintStream/print(I)V
+; Line #20:		print result;
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #21:		print "\n"
+ldc "\n"
+; Line #21:		print "\n"
+invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V
+; Line #21:		print "\n";
+return
+; Line #23:	end foo
+.end method
+; Line #23:	end foo
+.method public static main([Ljava/lang/String;)V
+	.limit stack 15
+; Line #25:	begin
+new java/util/Scanner
+dup
+getstatic java/lang/System/in Ljava/io/InputStream;
+invokespecial java/util/Scanner/<init>(Ljava/io/InputStream;)V
+; Line #25:	begin
+putstatic test1/_sc Ljava/util/Scanner;
+; Line #25:	begin
+.limit locals 128
+; Line #25:	begin
+bipush 110
+; Line #27:		var c: 110
+istore 3
+; Line #27:		var c: 110;
+bipush 1
+istore 4
+Lbegin_3:
+; Line #28:		for i := 1
+iload 4
+bipush 10
+isub
+iflt Ltrue_3
+iconst_0
+goto Lfalse_3
+Ltrue_3:
+iconst_1
+Lfalse_3:
+ifeq Lexit_3
+; Line #28:		for i := 1 to 9
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #29:			print i
+iload 4
+; Line #29:			print i;
+invokevirtual java/io/PrintStream/print(I)V
+; Line #29:			print i;
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #30:			print "\n"
+ldc "\n"
+; Line #30:			print "\n"
+invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V
+; Line #30:			print "\n";
+iload 4
+bipush 1
+iadd
+istore 4
+goto Lbegin_3
+Lexit_3:
+; Line #31:		end do
+getstatic test1/_sc Ljava/util/Scanner;
+invokevirtual java/util/Scanner/nextInt()I
+; Line #32:		read a;
+istore 1
+; Line #32:		read a;
+iload 1
+; Line #33:		foo( a )
+invokestatic test1/foo(I)V
+; Line #33:		foo( a )
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #34:		print c
+iload 3
+; Line #34:		print c;
+invokevirtual java/io/PrintStream/print(I)V
+; Line #34:		print c;
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #35:		print "\n"
+ldc "\n"
+; Line #35:		print "\n"
+invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V
+; Line #35:		print "\n";
+bipush 2
+; Line #36:	    a := 2
+istore 1
+; Line #36:	    a := 2;
+bipush 3
+; Line #37:	    b:= 3
+istore 2
+; Line #37:	    b:= 3;
+iload 3
+; Line #38:		if c >=
+bipush 100
+; Line #38:		if c >= 100
+isub
+ifge Ltrue_4
+iconst_0
+goto Lfalse_4
+Ltrue_4:
+iconst_1
+Lfalse_4:
+; Line #38:		if c >= 100 then
+ifeq Lelse_7
+; Line #43:		else
+                   
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #39:			print "c >= 100 \n"
+ldc "c >= 100 \n"
+; Line #39:			print "c >= 100 \n"
+invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V
+; Line #39:			print "c >= 100 \n";
+iload 1
+; Line #40:		    if a*
+bipush 3
+; Line #40:		    if a*3
+imul
+; Line #40:		    if a*3
+bipush 1
+; Line #40:		    if a*3+1
+iadd
+; Line #40:		    if a*3+1 <>
+iload 2
+; Line #40:		    if a*3+1 <> b*
+bipush 4
+; Line #40:		    if a*3+1 <> b*4
+imul
+; Line #40:		    if a*3+1 <> b*4
+bipush 123
+; Line #40:		    if a*3+1 <> b*4 mod 123
+irem
+; Line #40:		    if a*3+1 <> b*4 mod 123
+isub
+ifne Ltrue_5
+iconst_0
+goto Lfalse_5
+Ltrue_5:
+iconst_1
+Lfalse_5:
+; Line #40:		    if a*3+1 <> b*4 mod 123 then
+ifeq Lexit_6
+; Line #42:		    end if
+             
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #41:		            print "test"
+ldc "test"
+; Line #41:		            print "test"
+invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V
+; Line #41:		            print "test";
+Lexit_6:
+; Line #42:		    end if
+goto Lexit_7
+; Line #43:		else
+Lelse_7:
+; Line #43:		else
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #44:			print ""
+ldc ""
+; Line #44:			print ""
+invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V
+; Line #44:			print "";
+Lexit_7:
+; Line #45:		end if
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #47:	    print 1
+bipush 1
+; Line #47:	    print 1
+bipush 2
+; Line #47:	    print 1+2
+bipush 3
+; Line #47:	    print 1+2*(3
+bipush 4
+; Line #47:	    print 1+2*(3+4
+iadd
+; Line #47:	    print 1+2*(3+4)
+imul
+; Line #47:	    print 1+2*(3+4)
+iadd
+; Line #47:	    print 1+2*(3+4);
+invokevirtual java/io/PrintStream/print(I)V
+; Line #47:	    print 1+2*(3+4);
+iload 3
+; Line #51:			d := c;
+istore 5
+; Line #51:			d := c;
+getstatic java/lang/System/out Ljava/io/PrintStream;
+; Line #52:			print d
+iload 5
+; Line #52:			print d;
+invokevirtual java/io/PrintStream/print(I)V
+; Line #52:			print d;
+return
+.end method
+; Line #54:	end
