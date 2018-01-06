@@ -482,6 +482,7 @@ function_invocation :
 				strcat( strcat(message, $1), "' not found");
 				yyerror(message);
 			} else if (!parameters_match(strdup(param_types), strdup($3.type))) {
+				printf("------------------mismatch param_types: %s, %s\n", param_types, $3.type);
 				yyerror("parameter type mismatch");
 			} else {
 				$$.type = return_type;
@@ -513,18 +514,27 @@ array_reference :
 			char* original_type = get_value_of_identifier($1).type;
 			if (safe_strcmp(original_type, "error")) {
 				int index_reference_count = $2;
-				int pos;
-				for (pos = strlen(original_type)-1; pos >= 0; pos--) {
-					if (original_type[pos] == '[')
-						index_reference_count--;
-					if (!index_reference_count)
-						break;
+				// -1 indicates an error
+				if (index_reference_count != -1) {
+					// use `start` and `end` to tailor `original_type`
+					int end;
+					int start = -1;
+					for (end = 0; end < strlen(original_type); end++) {
+						if (original_type[end] == '[') {
+							index_reference_count--;
+							if (start == -1)
+								start = end;
+						}
+						if (index_reference_count == -1)
+							break;
+					}
+					$$.type = malloc(100);
+					strncpy($$.type, original_type, start);
+					strcat($$.type, original_type + end);
+					// Remove the final space if the result is scalar type
+					if ($$.type[strlen($$.type)-1] == ' ')
+						$$.type[strlen($$.type)-1] = '\0';
 				}
-				/* Remove the gap space */
-				if (original_type[pos-1] == ' ')
-					pos--;
-				$$.type = malloc(500);
-				strncpy($$.type, original_type, pos);
 			}
 		}
 
@@ -534,6 +544,7 @@ index_references :
 		{
 			if (safe_strcmp($2.type, "integer")) {
 				yyerror("each index of array references must be an integer");
+				$$ = -1;
 			} else {
 				$$ = $4 + 1;
 			}
