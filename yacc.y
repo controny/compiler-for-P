@@ -84,6 +84,7 @@ void add_ariop_code();
 void set_locals_limit();
 void add_local_var_to_stack();
 void load_variable();
+int safe_strcmp();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -113,7 +114,7 @@ variable_reference function_invocation array_reference
 program	:
 	programname SEMICOLON
 		{
-			if (strcmp($1, file_name))
+			if (safe_strcmp($1, file_name))
 				yyerror("program beginning ID inconsist with file name");
 			add_symbol($1);
 			add_kind_and_type("program", "void");
@@ -125,9 +126,9 @@ program	:
 	programbody
 	KEND IDENT
 		{
-			if (strcmp($1, $6))
+			if (safe_strcmp($1, $6))
 				yyerror("program end ID inconsist with the beginning ID");
-			if (strcmp($1, file_name))
+			if (safe_strcmp($1, file_name))
 				yyerror("program end ID inconsist with file name");
 			dumpsymbol();
 		}
@@ -139,39 +140,39 @@ function :
 	IDENT LPAREN arguments RPAREN return_type
 		{
 			$<text>$ = "";
-			if (strcmp($5, "integer")
-				&& strcmp($5, "real")
-				&& strcmp($5, "string")
-				&& strcmp($5, "bool")
-				&& strcmp($5, "void")) {
+			if (safe_strcmp($5, "integer")
+				&& safe_strcmp($5, "real")
+				&& safe_strcmp($5, "string")
+				&& safe_strcmp($5, "bool")
+				&& safe_strcmp($5, "void")) {
 				yyerror("a function cannot return an array type");
 				$<text>$ = "error";
 			} else {
 				for (int i = 0; i < cur_var_index; i++)
-					if (!strcmp(var_types[i], "error")) {
+					if (!safe_strcmp(var_types[i], "error")) {
 						$<text>$ = "error";
 						break;
 					}
 			}
-			if (strcmp($<text>$, "error"))
+			if (safe_strcmp($<text>$, "error"))
 				add_symbol($1);
 			add_table();
 			char assembly[200];
 			sprintf(assembly, ".method public static %s(", $1);
 			for (int i = 0; i < cur_var_index; i++) {
-				if (strcmp(var_types[i], "error")) {
+				if (safe_strcmp(var_types[i], "error")) {
 					add_symbol(var_symbols[i]);
 					add_kind_and_type("parameter", var_types[i]);
 				}
 			}
-			if (strcmp($<text>$, "error")) {
+			if (safe_strcmp($<text>$, "error")) {
 				/* Calculate attributes of the funciton */
 				char attributes[100] = "";
 				for (int i = 0; i < cur_index[top]; i++)
 				{
-					if (!strcmp(stack[top][i].kind, "parameter"))
+					if (!safe_strcmp(stack[top][i].kind, "parameter"))
 					{
-						if (!strcmp(attributes, ""))
+						if (!safe_strcmp(attributes, ""))
 							strcpy(attributes, stack[top][i].type);
 						else
 							strcat( strcat(attributes, ", "),  stack[top][i].type);
@@ -187,7 +188,7 @@ function :
 			write_assembly_code(".limit stack 20");
 			set_locals_limit();
 			for (int i = 0; i < cur_index[top]; i++) {
-				if (!strcmp(stack[top][i].kind, "parameter")) {
+				if (!safe_strcmp(stack[top][i].kind, "parameter")) {
 					// Add parameters to locals stack
 					add_local_var_to_stack(stack[top][i].name);
 				}
@@ -196,15 +197,15 @@ function :
 	SEMICOLON KBEGIN declarations statements KEND KEND IDENT
 		{ 
 			dumpsymbol();
-			if (strcmp($1, $13)) {
+			if (safe_strcmp($1, $13)) {
 				yyerror("function end ID inconsist with the beginning ID");
 			}
-			if (strcmp($<text>6, "error")) {
+			if (safe_strcmp($<text>6, "error")) {
 				add_kind_and_type("function", $5);
 				add_attribute($<text>6);
 			}
 			cur_func_type = NULL;
-			if (!strcmp($5, "void"))
+			if (!safe_strcmp($5, "void"))
 				write_assembly_code("return");
 			write_assembly_code(".end method");
 			cur_frame_num++;
@@ -215,7 +216,7 @@ declaration :
 	KVAR identifier_list COLON type SEMICOLON
 		{
 			for (int i = 0; i < cur_var_index; i++) {
-				if (strcmp($4, "error")) {
+				if (safe_strcmp($4, "error")) {
 					add_symbol(var_symbols[i]);
 					add_kind_and_type("variable", $4);
 				}
@@ -252,9 +253,9 @@ declaration :
 			}
 			cur_var_index = 0;
 			char attr[100];
-			if (!strcmp($4.type, "integer"))
+			if (!safe_strcmp($4.type, "integer"))
 				sprintf(attr, "%d", $4.data.integer);
-			else if (!strcmp($4.type, "real"))
+			else if (!safe_strcmp($4.type, "real"))
 				sprintf(attr, "%f", $4.data.real);
 			else
 				sprintf(attr, "%s", $4.data.text);
@@ -307,17 +308,17 @@ compound :
 simple :
 	variable_reference ASSIGN expression SEMICOLON
 		{
-			if ($1.kind && !strcmp($1.kind, "constant")) {
+			if ($1.kind && !safe_strcmp($1.kind, "constant")) {
 				char message[100] = "constant \'";
 				strcat( strcat(message, $1.symbol), "\' cannot be assigned");
 				yyerror(message);
-			} else if ( strcmp($1.type, $3.type) && (strcmp($1.type, "real") || strcmp($3.type, "integer")) ) {
+			} else if ( safe_strcmp($1.type, $3.type) && (safe_strcmp($1.type, "real") || safe_strcmp($3.type, "integer")) ) {
 				char message[100] = "type mismatch, LHS= ";
 				strcat( strcat( strcat(message, $1.type), ", RHS= "), $3.type);
 				yyerror(message);
 			} else if (is_array_type($1.type) || is_array_type($3.type)) {
 				yyerror("array arithmetic is not allowed");
-			} else if (!strcmp($1.kind, "iterative"))
+			} else if (!safe_strcmp($1.kind, "iterative"))
 				yyerror("the value of the loop variable cannot be changed inside the loop");
 			char assembly[50];
 			if ($1.global) {
@@ -331,9 +332,9 @@ simple :
 		{
 			char* method_name;
 			char* store = "istore";
-			if (!strcmp($2.type, "integer"))
+			if (!safe_strcmp($2.type, "integer"))
 				method_name = "Int";
-			else if (!strcmp($2.type, "boolean"))
+			else if (!safe_strcmp($2.type, "boolean"))
 				method_name = "Boolean";
 			else {
 				method_name = "Float";
@@ -454,7 +455,7 @@ return :
 	{
 		if (!cur_func_type)
 			yyerror("program cannot be returned");
-		else if (strcmp($2.type, cur_func_type))
+		else if (safe_strcmp($2.type, cur_func_type))
 			yyerror("return type mismatch");
 		write_assembly_code("ireturn");
 	}
@@ -470,7 +471,7 @@ function_invocation :
 			char* return_type;
 			for (int scope = top; scope >= 0; scope--) {
 				for (int i = 0; i < cur_index[scope]; i++) {
-					if (!strcmp($1, stack[scope][i].name)) {
+					if (!safe_strcmp($1, stack[scope][i].name)) {
 						param_types = stack[scope][i].attribute;
 						return_type = stack[scope][i].type;
 					}
@@ -510,7 +511,7 @@ array_reference :
 	IDENT index_references
 		{
 			char* original_type = get_value_of_identifier($1).type;
-			if (strcmp(original_type, "error")) {
+			if (safe_strcmp(original_type, "error")) {
 				int index_reference_count = $2;
 				int pos;
 				for (pos = strlen(original_type)-1; pos >= 0; pos--) {
@@ -522,7 +523,7 @@ array_reference :
 				/* Remove the gap space */
 				if (original_type[pos-1] == ' ')
 					pos--;
-				$$.type = malloc(100);
+				$$.type = malloc(500);
 				strncpy($$.type, original_type, pos);
 			}
 		}
@@ -531,7 +532,7 @@ index_references :
 	/* empty */ { $$ = 0; }
 	| LSBRACKET expression RSBRACKET index_references
 		{
-			if (strcmp($2.type, "integer")) {
+			if (safe_strcmp($2.type, "integer")) {
 				yyerror("each index of array references must be an integer");
 			} else {
 				$$ = $4 + 1;
@@ -637,7 +638,7 @@ expression :
 	| expression PLUS expression
 		{
 			/* Allow string concatenation */
-			if (!strcmp($1.type, "string") && !strcmp($3.type, "string")) {
+			if (!safe_strcmp($1.type, "string") && !safe_strcmp($3.type, "string")) {
 				$$.type = "string";
 			} else {
 				$$.type = get_type_of_arithmetic_operator($1, $3);
@@ -661,7 +662,7 @@ expression :
 		}
 	| expression MOD expression
 		{
-			if (strcmp($1.type, "integer") || strcmp($3.type, "integer"))
+			if (safe_strcmp($1.type, "integer") || safe_strcmp($3.type, "integer"))
 				yyerror("the operands must be integer types");
 			else
 				$$.type = "integer";
@@ -716,7 +717,7 @@ boolean_expression :
 		}
 	| NOT expression
 		{
-			if (strcmp($2.type, "boolean"))
+			if (safe_strcmp($2.type, "boolean"))
 				yyerror("the operand must be boolean type");
 			else
 				$$.type = "boolean";
@@ -779,7 +780,7 @@ void add_kind_and_type(char* kind, char* type)
 void add_attribute(char *attr) 
 {
 	for (int i = 0; i < cur_index[top]; i++)
-		if ( (!strcmp(stack[top][i].kind, "constant") || !strcmp(stack[top][i].kind, "function") )
+		if ( (!safe_strcmp(stack[top][i].kind, "constant") || !safe_strcmp(stack[top][i].kind, "function") )
 				&& !stack[top][i].attribute ) {
 			stack[top][i].attribute = strdup(attr);
 		}
@@ -817,11 +818,11 @@ int check_normal_redeclaration(char *name)
 {
 	int is_ok = 1;
 	for (int i = 0; i < cur_index[top]; i++)
-		if (!strcmp(name, stack[top][i].name))
+		if (!safe_strcmp(name, stack[top][i].name))
 			is_ok = 0;
 	if (is_ok)
 		for (int i = 0; i < iter_top; i++)
-			if (!strcmp(name, iter_stack[i]))
+			if (!safe_strcmp(name, iter_stack[i]))
 				is_ok = 0;
 	if (!is_ok) {
 		char message[100] = "symbol ";
@@ -836,7 +837,7 @@ int check_for_loop_redeclaration(char *name)
 	int is_ok = 1;
 	if (is_ok)
 		for (int i = 0; i < iter_top; i++)
-			if (!strcmp(name, iter_stack[i]))
+			if (!safe_strcmp(name, iter_stack[i]))
 				is_ok = 0;
 	if (!is_ok) {
 		char message[100] = "symbol ";
@@ -884,7 +885,7 @@ struct Constant get_value_of_identifier(char *identifier)
 	ret.global = 0;
 	for (int scope = top; scope >= 0; scope--) {
 		for (int i = 0; i < cur_index[scope]; i++) {
-			if (!strcmp(identifier, stack[scope][i].name)) {
+			if (!safe_strcmp(identifier, stack[scope][i].name)) {
 				if (!scope) {
 					ret.global = 1;
 				}
@@ -897,7 +898,7 @@ struct Constant get_value_of_identifier(char *identifier)
 	}
 	int is_loop_variable = 0;
 	for (int i = 0; i < iter_top; i++)
-		if (!strcmp(identifier, iter_stack[i]))
+		if (!safe_strcmp(identifier, iter_stack[i]))
 			is_loop_variable = 1;
 	if (is_loop_variable) {
 		ret.type = "integer";
@@ -915,8 +916,9 @@ struct Constant get_value_of_identifier(char *identifier)
 
 int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
 {
-	if ( (strcmp(a.type, "integer") && strcmp(a.type, "real"))
-		|| (strcmp(b.type, "integer") && strcmp(b.type, "real")) ) {
+	printf("----------------check operands a: %s, b: %s\n", a.type, b.type);
+	if ( (safe_strcmp(a.type, "integer") && safe_strcmp(a.type, "real"))
+		|| (safe_strcmp(b.type, "integer") && safe_strcmp(b.type, "real")) ) {
 		yyerror("the operands must be integer or real types");
 		return 0;
 	} else {
@@ -927,7 +929,7 @@ int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
 char* get_type_of_arithmetic_operator(struct Constant a, struct Constant b)
 {
 	if (check_operands_be_integer_or_real(a, b)) {
-		if (!strcmp(a.type, "real") || !strcmp(b.type, "real"))
+		if (!safe_strcmp(a.type, "real") || !safe_strcmp(b.type, "real"))
 			return "real";
 		else
 			return "integer";
@@ -938,7 +940,7 @@ char* get_type_of_arithmetic_operator(struct Constant a, struct Constant b)
 
 char* get_type_of_boolean_operator(struct Constant a, struct Constant b)
 {
-	if (strcmp(a.type, "boolean") || strcmp(b.type, "boolean")) {
+	if (safe_strcmp(a.type, "boolean") || safe_strcmp(b.type, "boolean")) {
 		yyerror("the operands must be boolean types");
 		return "";
 	} else {
@@ -949,7 +951,7 @@ char* get_type_of_boolean_operator(struct Constant a, struct Constant b)
 char* get_type_of_relational_operator(struct Constant a, struct Constant b)
 {
 	if (check_operands_be_integer_or_real(a, b)) {
-		if (strcmp(a.type, b.type)) {
+		if (safe_strcmp(a.type, b.type)) {
 			yyerror("the operands must be of the same type");
 			return "";
 		}
@@ -961,7 +963,7 @@ char* get_type_of_relational_operator(struct Constant a, struct Constant b)
 
 void check_conditional_expression(struct Constant x)
 {
-	if (strcmp(x.type, "boolean"))
+	if (safe_strcmp(x.type, "boolean"))
 		yyerror("the conditional expression part must be Boolean type");
 }
 
@@ -997,10 +999,10 @@ int parameters_match(char* formal_params_str, char* actual_params_str)
 		return 0;
 	for (int i = 0; i < num_fparams; i++) {
 		/* Consider coercion */
-		if ( (!strcmp(formal_params[i], "real") || !strcmp(formal_params[i], " real") )
-			&& (!strcmp(actual_params[i], "integer") || !strcmp(actual_params[i], " integer")) )
+		if ( (!safe_strcmp(formal_params[i], "real") || !safe_strcmp(formal_params[i], " real") )
+			&& (!safe_strcmp(actual_params[i], "integer") || !safe_strcmp(actual_params[i], " integer")) )
 			continue;
-		if (strcmp(formal_params[i], actual_params[i]))
+		if (safe_strcmp(formal_params[i], actual_params[i]))
 			return 0;
 	}
 	return 1;
@@ -1009,13 +1011,13 @@ int parameters_match(char* formal_params_str, char* actual_params_str)
 char* get_jvm_type_descriptor(char* type)
 {
 	char* type_descriptor = "";
-	if (!strcmp(type, "integer"))
+	if (!safe_strcmp(type, "integer"))
 		type_descriptor = "I";
-	else if (!strcmp(type, "boolean"))
+	else if (!safe_strcmp(type, "boolean"))
 		type_descriptor = "Z";
-	else if (!strcmp(type, "real"))
+	else if (!safe_strcmp(type, "real"))
 		type_descriptor = "F";
-	else if (!strcmp(type, "void"))
+	else if (!safe_strcmp(type, "void"))
 		type_descriptor = "V";
 	return type_descriptor;
 }
@@ -1025,7 +1027,7 @@ int get_local_var_num(char* name)
 	// Traverse in a reverse order
 	// to avoid getting outter variable with the same name
 	for (int i = next_var_num-1; i >= 0; i--) {
-		if (!strcmp(local_vars_stack[cur_frame_num][i], name)) {
+		if (!safe_strcmp(local_vars_stack[cur_frame_num][i], name)) {
 			return i;
 		}
 	}
@@ -1034,7 +1036,7 @@ int get_local_var_num(char* name)
 void write_print_code(char* type)
 {
 	char* java_type;
-	if (!strcmp(type, "string"))
+	if (!safe_strcmp(type, "string"))
 		java_type = "Ljava/lang/String;";
 	else
 		java_type = get_jvm_type_descriptor(type);
@@ -1046,7 +1048,7 @@ void write_print_code(char* type)
 void write_assembly_code(char* assembly)
 {
 	fprintf(code_fp, assembly);
-	char comment[100];
+	char comment[500];
 	sprintf(comment, "\n; Line #%d:\t%s\n", linenum, buf);
 	fprintf(code_fp, comment);
 }
@@ -1062,7 +1064,7 @@ void add_relop_code(char* op, char* type)
 {
 	char assembly[200];
 	char* cmp;
-	if (!strcmp(type, "integer"))
+	if (!safe_strcmp(type, "integer"))
 		cmp = "isub";
 	else
 		cmp = "fcmpl";
@@ -1075,7 +1077,7 @@ void add_relop_code(char* op, char* type)
 
 void add_ariop_code(char* int_op, char* real_op, char* type)
 {
-	if (!strcmp(type, "integer"))
+	if (!safe_strcmp(type, "integer"))
 		write_assembly_code(int_op);
 	else
 		write_assembly_code(real_op);
@@ -1102,7 +1104,7 @@ void load_variable(struct Constant var)
 		sprintf(assembly, "getstatic %s/%s %s", file_name, var.symbol, type_descriptor);
 	} else {
 		int var_num = get_local_var_num(var.symbol);
-		if (!strcmp(var.type, "integer"))
+		if (!safe_strcmp(var.type, "integer"))
 			sprintf(assembly, "iload %d", var_num);
 		else
 			sprintf(assembly, "fload %d", var_num);
@@ -1110,6 +1112,12 @@ void load_variable(struct Constant var)
 	write_assembly_code(assembly);
 }
 
+int safe_strcmp(char* a, char* b)
+{
+	if (a && b)
+		return strcmp(a, b);
+	return 1;
+}
 int  main( int argc, char **argv )
 {
 	if( argc != 2 ) {
