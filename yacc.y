@@ -670,9 +670,13 @@ expression :
 		}
 	| MINUS expression %prec MULTIP
 		{
+			$$ = $2;
 			add_ariop_code("ineg", "fneg", $2.type);
 		}
 	| LPAREN expression RPAREN
+		{
+			$$ = $2;
+		}
 
 boolean_expression :
 	expression LESS expression
@@ -916,7 +920,6 @@ struct Constant get_value_of_identifier(char *identifier)
 
 int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
 {
-	printf("----------------check operands a: %s, b: %s\n", a.type, b.type);
 	if ( (safe_strcmp(a.type, "integer") && safe_strcmp(a.type, "real"))
 		|| (safe_strcmp(b.type, "integer") && safe_strcmp(b.type, "real")) ) {
 		yyerror("the operands must be integer or real types");
@@ -929,7 +932,7 @@ int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
 char* get_type_of_arithmetic_operator(struct Constant a, struct Constant b)
 {
 	if (check_operands_be_integer_or_real(a, b)) {
-		if (!safe_strcmp(a.type, "real") || !safe_strcmp(b.type, "real"))
+		if (!safe_strcmp(a.type, "real") || !safe_strcmp(b.type, "real")) 
 			return "real";
 		else
 			return "integer";
