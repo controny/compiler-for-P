@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libgen.h>
 #include "constant.h"
 
 #define DEBUG1 0
@@ -143,7 +144,7 @@ function :
 			if (safe_strcmp($5, "integer")
 				&& safe_strcmp($5, "real")
 				&& safe_strcmp($5, "string")
-				&& safe_strcmp($5, "bool")
+				&& safe_strcmp($5, "boolean")
 				&& safe_strcmp($5, "void")) {
 				yyerror("a function cannot return an array type");
 				$<text>$ = "error";
@@ -154,8 +155,10 @@ function :
 						break;
 					}
 			}
+			// Add the function to global level table
 			if (safe_strcmp($<text>$, "error"))
 				add_symbol($1);
+			// Create local table
 			add_table();
 			char assembly[200];
 			sprintf(assembly, ".method public static %s(", $1);
@@ -181,6 +184,13 @@ function :
 				}
 				$<text>$ = strdup(attributes);
 			}
+			// Add the type and attributes of the function in global table
+			if (safe_strcmp($<text>$, "error")) {
+				add_kind_and_type("function", $5);
+				add_attribute("function", $<text>$);
+			}
+
+			// Manage jvm local variables
 			cur_var_index = last_var_index = 0;
 			cur_func_type = strdup($5);
 			strcat( strcat(assembly, ")"), get_jvm_type_descriptor($5) );
@@ -199,10 +209,6 @@ function :
 			dumpsymbol();
 			if (safe_strcmp($1, $13)) {
 				yyerror("function end ID inconsist with the beginning ID");
-			}
-			if (safe_strcmp($<text>6, "error")) {
-				add_kind_and_type("function", $5);
-				add_attribute($<text>6);
 			}
 			cur_func_type = NULL;
 			if (!safe_strcmp($5, "void"))
@@ -261,7 +267,7 @@ declaration :
 				sprintf(attr, "%s", $4.data.text);
 			if (DEBUG2)
 				printf("------------Add attribute: %s\n", attr);
-			add_attribute(attr);
+			add_attribute("constant", attr);
 		}
 
 statement :
@@ -410,10 +416,10 @@ while :
 	expression KDO
 		{
 			add_label_postfix("ifeq Lexit_%d", $<count>2);
+			check_conditional_expression($3);
 		}
 	statements KEND KDO
 		{
-			check_conditional_expression($3);
 			add_label_postfix("goto Lbegin_%d", $<count>2);
 			add_label_postfix("Lexit_%d:", $<count>2);
 		}
@@ -472,8 +478,8 @@ function_invocation :
 			for (int scope = top; scope >= 0; scope--) {
 				for (int i = 0; i < cur_index[scope]; i++) {
 					if (!safe_strcmp($1, stack[scope][i].name)) {
-						param_types = stack[scope][i].attribute;
-						return_type = stack[scope][i].type;
+						param_types = strdup(stack[scope][i].attribute);
+						return_type = strdup(stack[scope][i].type);
 					}
 				}
 			}
@@ -482,7 +488,6 @@ function_invocation :
 				strcat( strcat(message, $1), "' not found");
 				yyerror(message);
 			} else if (!parameters_match(strdup(param_types), strdup($3.type))) {
-				printf("------------------mismatch param_types: %s, %s\n", param_types, $3.type);
 				yyerror("parameter type mismatch");
 			} else {
 				$$.type = return_type;
@@ -785,19 +790,27 @@ void add_kind_and_type(char* kind, char* type)
 {
 	if (DEBUG2)
 		printf("------------Add kind: %s, type: %s\n", kind, type);
-	for (int i = 0; i < cur_index[top]; i++)
-		if (!stack[top][i].kind){
-			stack[top][i].kind = strdup(kind);
-			stack[top][i].type = strdup(type);
+	int level = top;
+	if (!safe_strcmp(kind, "function")) {
+		level = 0;
+	}
+	for (int i = 0; i < cur_index[level]; i++)
+		if (!stack[level][i].kind){
+			stack[level][i].kind = strdup(kind);
+			stack[level][i].type = strdup(type);
 		}
 }
 
-void add_attribute(char *attr) 
+void add_attribute(char* kind, char *attr) 
 {
-	for (int i = 0; i < cur_index[top]; i++)
-		if ( (!safe_strcmp(stack[top][i].kind, "constant") || !safe_strcmp(stack[top][i].kind, "function") )
-				&& !stack[top][i].attribute ) {
-			stack[top][i].attribute = strdup(attr);
+	int level = top;
+	if (!safe_strcmp(kind, "function")) {
+		level = 0;
+	}
+	for (int i = 0; i < cur_index[level]; i++)
+		if (!safe_strcmp(stack[level][i].kind, kind)
+				&& !stack[level][i].attribute ) {
+			stack[level][i].attribute = strdup(attr);
 		}
 }
 
