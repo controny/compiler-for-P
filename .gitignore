@@ -2,3 +2,4 @@ bin/*
 build/*
 temp/*
 *.class
+.fuse_*

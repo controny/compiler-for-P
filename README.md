@@ -3,7 +3,7 @@
 ## Summary
 
 This is a simple compiler for self-defined `P` language, which can be viewed as a simplified version of `Pascal`. The whole skeleton of the compiler is as follows: 
-![](https://controny.github.io/assets/images/posts/20180108135459.png)
+![](https://github.com/controny/compiler-for-P/docs/skeleton.png)
 
 ## Syntax
 

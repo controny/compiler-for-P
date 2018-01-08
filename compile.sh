@@ -2,6 +2,7 @@
 
 pname=${1%.p}
 
+mkdir -p temp
 cd temp
 ../bin/parser ../$1 | tee parser.out
 cd -

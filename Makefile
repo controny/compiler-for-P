@@ -11,9 +11,11 @@ YACCFLAG = -d -v
 LIBS = -lfl -ly
 
 $(BIN)/$(TARGET): $(BUILD)/y.tab.c $(BUILD)/lex.yy.c
+	mkdir -p bin
 	$(CC) $^ $(CCFLAGS) $(LIBS) -I $(SRC) -o $@
 
 $(BUILD)/y.tab.c: $(SRC)/yacc.y
+	mkdir -p build
 	$(YACC) $(YACCFLAG) $< -o $@
 
 $(BUILD)/lex.yy.c: $(SRC)/lex.l
