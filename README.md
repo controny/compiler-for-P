@@ -7,7 +7,7 @@ This is a simple compiler for self-defined `P` language, which can be viewed as 
 
 ## Syntax
 
-Actually, this is the term project for my course *Intro. to Compiler Design*. So the syntax of `P` refers to the documents offered by our professor, which can be found in [docs](https://github.com/controny/compiler-for-P/docs).
+Actually, this is the term project for my course *Intro. to Compiler Design*. So the syntax of `P` refers to the documents offered by our professor, which can be found in [docs](https://github.com/controny/compiler-for-P/tree/master/docs).
 
 ## Usage
 
