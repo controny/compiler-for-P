@@ -1,0 +1,103 @@
+; arrayRef.j
+.class public arrayRef
+.super java/lang/Object
+.field public static _sc Ljava/util/Scanner;
+
+; Line #4:	arrayRef;
+.field public static v 
+; Line #5:	var v: array 1 to 2 of array 1 to 2 of array 1 to 2 of array 1 to 2 of array 1 to 2 of array 1 to 2 of array 1 to 2 of boolean;
+.method public static hoy(Z)
+; Line #7:	hoy(verbose: boolean; strs, strss: array 99 to 100 of string) : string
+.limit stack 20
+; Line #7:	hoy(verbose: boolean; strs, strss: array 99 to 100 of string) : string
+.limit locals 128
+; Line #7:	hoy(verbose: boolean; strs, strss: array 99 to 100 of string) : string
+bipush 1
+; Line #9:	    verbose := v[1
+bipush 1
+; Line #9:	    verbose := v[1][1
+bipush 1
+; Line #9:	    verbose := v[1][1][1
+bipush 1
+; Line #9:	    verbose := v[1][1][1][1
+bipush 1
+; Line #9:	    verbose := v[1][1][1][1][1
+iconst_1
+; Line #9:	    verbose := v[1][1][1][1][1][true
+bipush 1
+; Line #9:	    verbose := v[1][1][1][1][1][true][1
+getstatic arrayRef/(null) 
+; Line #9:	    verbose := v[1][1][1][1][1][true][1];
+istore 0
+; Line #9:	    verbose := v[1][1][1][1][1][true][1];
+ldc 99.000000
+; Line #10:	    return strs[99.0
+getstatic arrayRef/(null) I
+; Line #10:	    return strs[99.0];
+ireturn
+; Line #10:	    return strs[99.0];
+.end method
+; Line #12:	end hoy
+.method public static fun()I
+; Line #14:	fun() : integer
+.limit stack 20
+; Line #14:	fun() : integer
+.limit locals 128
+; Line #14:	fun() : integer
+ldc "4"
+; Line #17:	    v["4"
+bipush 5
+; Line #17:	    v["4"] := v[5
+getstatic arrayRef/(null) F
+; Line #17:	    v["4"] := v[5] -
+ldc 1.000000
+; Line #17:	    v["4"] := v[5] - 1.0
+fsub
+; Line #17:	    v["4"] := v[5] - 1.0;
+putstatic arrayRef/(null) I
+; Line #17:	    v["4"] := v[5] - 1.0;
+bipush 3
+; Line #18:	    return -3
+ineg
+; Line #18:	    return -3
+ireturn
+; Line #18:	    return -3;
+.end method
+; Line #20:	end fun
+.method public static resetArr()V
+; Line #22:	resetArr(arr: array 1 to 1000 of integer);
+.limit stack 20
+; Line #22:	resetArr(arr: array 1 to 1000 of integer);
+.limit locals 128
+; Line #22:	resetArr(arr: array 1 to 1000 of integer);
+iload 1
+; Line #25:	    arr[i]
+bipush 0
+; Line #25:	    arr[i] := 0
+putstatic arrayRef/(null) I
+; Line #25:	    arr[i] := 0;
+return
+; Line #27:	end resetArr
+.end method
+; Line #27:	end resetArr
+.method public static main([Ljava/lang/String;)V
+	.limit stack 15
+; Line #29:	begin
+new java/util/Scanner
+dup
+getstatic java/lang/System/in Ljava/io/InputStream;
+invokespecial java/util/Scanner/<init>(Ljava/io/InputStream;)V
+; Line #29:	begin
+putstatic arrayRef/_sc Ljava/util/Scanner;
+; Line #29:	begin
+.limit locals 128
+; Line #29:	begin
+bipush 1
+; Line #31:	    resetArr(v[1
+getstatic arrayRef/(null) 
+; Line #31:	    resetArr(v[1])
+invokestatic arrayRef/resetArr()V
+; Line #31:	    resetArr(v[1])
+return
+.end method
+; Line #32:	end

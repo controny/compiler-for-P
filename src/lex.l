@@ -15,9 +15,9 @@
 
 #define  MAX_LINE_LENG  256
 
-int Opt_S = 1;				/* list source code option */
-int Opt_T = 1;				/* list token option */
-int Opt_D = 1;				/* dump symbols */
+int Opt_S = 0;				/* list source code option */
+int Opt_T = 0;				/* list token option */
+int Opt_D = 0;				/* dump symbols */
 int linenum = 1;			/* line number */
 char buf[MAX_LINE_LENG];		/* source code line buffer */
 char strContent[MAX_LINE_LENG];		/* string buffer */

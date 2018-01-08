@@ -96,7 +96,7 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 %type <text> scalar_type type return_type programname arguments argument function
 %token <constant> PINT ZERO REAL STRING KTRUE KFALSE
 %type <constant> literal_constant integer_literal expressions expression expression_component boolean_expression
-variable_reference function_invocation array_reference
+variable_reference function_invocation array_reference print_kind
 %type <count> index_references
 
 %right ASSIGN
@@ -195,7 +195,7 @@ function :
 			cur_func_type = strdup($5);
 			strcat( strcat(assembly, ")"), get_jvm_type_descriptor($5) );
 			write_assembly_code(assembly);
-			write_assembly_code(".limit stack 20");
+			write_assembly_code(".limit stack 100");
 			set_locals_limit();
 			for (int i = 0; i < cur_index[top]; i++) {
 				if (!safe_strcmp(stack[top][i].kind, "parameter")) {
@@ -290,7 +290,7 @@ compound :
 		{
 			// In addition to function, only global compound is a method
 			if (!top) {
-				write_assembly_code(".method public static main([Ljava/lang/String;)V\n\t.limit stack 15");
+				write_assembly_code(".method public static main([Ljava/lang/String;)V\n\t.limit stack 100");
 				// In the beginning of main block, create an instance of java.util.Scanner
 				write_assembly_code("new java/util/Scanner\ndup\ngetstatic java/lang/System/in Ljava/io/InputStream;\ninvokespecial java/util/Scanner/<init>(Ljava/io/InputStream;)V");
 				char assembly[100];
@@ -360,6 +360,12 @@ simple :
 		}
 	| KPRINT
 		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
+	print_kind
+	SEMICOLON
+		{ write_print_code($3.type); }
+	/*
+	| KPRINT
+		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
 	variable_reference 
 		{ load_variable($3); }
 	SEMICOLON
@@ -368,6 +374,12 @@ simple :
 		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
 	expression SEMICOLON
 		{ write_print_code($3.type); }
+	*/
+
+print_kind :
+	variable_reference 
+		{ load_variable($1); }
+	| expression
 
 conditional : 
 	KIF expression KTHEN
@@ -1177,10 +1189,12 @@ int  main( int argc, char **argv )
 	if (has_error)
 		exit(-1);
 
+	/*
 	fprintf( stdout, "\n" );
 	fprintf( stdout, "|---------------------------------------------|\n" );
 	fprintf( stdout, "|  There is no syntactic and semantic error!  |\n" );
 	fprintf( stdout, "|---------------------------------------------|\n" );
+	*/
 	
 	exit(0);
 }
