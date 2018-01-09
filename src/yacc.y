@@ -253,7 +253,10 @@ declaration :
 					write_assembly_code(assembly);
 				} else {
 					add_local_var_to_stack(var_symbols[i]);
-					sprintf(assembly, "istore %d", get_local_var_num(var_symbols[i]));
+					char* store = "istore";
+					if (!safe_strcmp($4.type, "real"))
+						store = "fstore";
+					sprintf(assembly, "%s %d", store, get_local_var_num(var_symbols[i]));
 					write_assembly_code(assembly);
 				}
 			}
@@ -330,7 +333,10 @@ simple :
 			if ($1.global) {
 				sprintf(assembly, "putstatic %s/%s %s", file_name, $1.symbol, get_jvm_type_descriptor($1.type));
 			} else {
-				sprintf(assembly, "istore %d", get_local_var_num($1.symbol));
+				char* store = "istore";
+				if (!safe_strcmp($1.type, "real"))
+					store = "fstore";
+				sprintf(assembly, "%s %d", store, get_local_var_num($1.symbol));
 			}
 			write_assembly_code(assembly);
 		}
@@ -363,18 +369,6 @@ simple :
 	print_kind
 	SEMICOLON
 		{ write_print_code($3.type); }
-	/*
-	| KPRINT
-		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
-	variable_reference 
-		{ load_variable($3); }
-	SEMICOLON
-		{ write_print_code($3.type); }
-	| KPRINT
-		{ write_assembly_code("getstatic java/lang/System/out Ljava/io/PrintStream;"); }
-	expression SEMICOLON
-		{ write_print_code($3.type); }
-	*/
 
 print_kind :
 	variable_reference 
@@ -1143,10 +1137,10 @@ void load_variable(struct Constant var)
 		sprintf(assembly, "getstatic %s/%s %s", file_name, var.symbol, type_descriptor);
 	} else {
 		int var_num = get_local_var_num(var.symbol);
-		if (!safe_strcmp(var.type, "integer"))
-			sprintf(assembly, "iload %d", var_num);
-		else
+		if (!safe_strcmp(var.type, "real"))
 			sprintf(assembly, "fload %d", var_num);
+		else
+			sprintf(assembly, "iload %d", var_num);
 	}
 	write_assembly_code(assembly);
 }

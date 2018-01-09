@@ -1,6 +1,7 @@
 #!/bin/bash
 
-pname=${1%.p}
+basename=`basename $1`
+pname=${basename%.p}
 
 mkdir -p temp
 cd temp
