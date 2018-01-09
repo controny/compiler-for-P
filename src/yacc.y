@@ -443,7 +443,7 @@ for :
 			$<count>$ = label_postfix++;
 			add_local_var_to_stack($2);
 			char assembly[200];
-			sprintf(assembly, "bipush %d\nistore %d\nLbegin_%d:", $5.data.integer, next_var_num-1, $<count>$);
+			sprintf(assembly, "sipush %d\nistore %d\nLbegin_%d:", $5.data.integer, next_var_num-1, $<count>$);
 			write_assembly_code(assembly);
 		}
 	KTO integer_literal
@@ -452,7 +452,7 @@ for :
 				yyerror("the loop parameter must be in the incremental order");
 			char assembly[200];
 			sprintf(assembly,
-				"iload %d\nbipush %d\nisub\niflt Ltrue_%d\niconst_0\ngoto Lfalse_%d\nLtrue_%d:\niconst_1\nLfalse_%d:\nifeq Lexit_%d",
+				"iload %d\nsipush %d\nisub\niflt Ltrue_%d\niconst_0\ngoto Lfalse_%d\nLtrue_%d:\niconst_1\nLfalse_%d:\nifeq Lexit_%d",
 				get_local_var_num($2), $8.data.integer+1, 
 				$<count>6, $<count>6, $<count>6, $<count>6, $<count>6);
 			write_assembly_code(assembly);
@@ -611,7 +611,7 @@ literal_constant :
 	integer_literal
 		{
 			char assembly[50];
-			sprintf(assembly, "bipush %d", $1.data.integer);
+			sprintf(assembly, "sipush %d", $1.data.integer);
 			write_assembly_code(assembly);
 		}
 	| REAL
