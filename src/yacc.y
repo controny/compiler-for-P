@@ -95,8 +95,8 @@ PLUS MINUS MULTIP DIVIDE MOD ASSIGN LESS LESSEQ NOTEQ GREQ GREATER EQ AND OR NOT
 %token <text> IDENT KINTEGER KREAL KSTRING KBOOL KARRAY
 %type <text> scalar_type type return_type programname arguments argument function
 %token <constant> PINT ZERO REAL STRING KTRUE KFALSE
-%type <constant> literal_constant integer_literal expressions expression expression_component boolean_expression
-variable_reference function_invocation array_reference print_kind
+%type <constant> literal_constant integer_literal expression expression_component boolean_expression
+variable_reference function_invocation array_reference print_kind expressions
 %type <count> index_references
 
 %right ASSIGN
@@ -107,6 +107,7 @@ variable_reference function_invocation array_reference print_kind
 
 %union {
 	struct Constant constant;
+	struct Constant list[50];  // to denote the type of `expressions`
 	char* text;
 	int count;
 }
@@ -254,8 +255,9 @@ declaration :
 				} else {
 					add_local_var_to_stack(var_symbols[i]);
 					char* store = "istore";
-					if (!safe_strcmp($4.type, "real"))
+					if (!safe_strcmp($4.type, "real")) {
 						store = "fstore";
+					}
 					sprintf(assembly, "%s %d", store, get_local_var_num(var_symbols[i]));
 					write_assembly_code(assembly);
 				}
@@ -334,8 +336,13 @@ simple :
 				sprintf(assembly, "putstatic %s/%s %s", file_name, $1.symbol, get_jvm_type_descriptor($1.type));
 			} else {
 				char* store = "istore";
-				if (!safe_strcmp($1.type, "real"))
+				if (!safe_strcmp($1.type, "real")) {
+					if (!safe_strcmp($3.type, "integer")){
+						// Deal with type coercion
+						write_assembly_code("i2f");
+					}
 					store = "fstore";
+				}
 				sprintf(assembly, "%s %d", store, get_local_var_num($1.symbol));
 			}
 			write_assembly_code(assembly);
@@ -962,10 +969,22 @@ int check_operands_be_integer_or_real(struct Constant a, struct Constant b)
 char* get_type_of_arithmetic_operator(struct Constant a, struct Constant b)
 {
 	if (check_operands_be_integer_or_real(a, b)) {
-		if (!safe_strcmp(a.type, "real") || !safe_strcmp(b.type, "real")) 
+		if (!safe_strcmp(a.type, "real") || !safe_strcmp(b.type, "real")) {
+			// Deal with type coercion
+			if (!safe_strcmp(a.type, "integer")) {
+				// Pop `b` and convert `a` to float
+				write_assembly_code("pop\ni2f");
+				// Then load b again
+				char assembly[50];
+				sprintf(assembly, "fload %d", get_local_var_num(b.symbol));
+			} else if (!safe_strcmp(b.type, "integer")) {
+				// Just convert the top(`b`) to float
+				write_assembly_code("i2f");
+			}
 			return "real";
-		else
+		} else {
 			return "integer";
+		}
 	} else {
 		return "";
 	}
@@ -1033,8 +1052,10 @@ int parameters_match(char* formal_params_str, char* actual_params_str)
 	for (int i = 0; i < num_fparams; i++) {
 		/* Consider coercion */
 		if ( (!safe_strcmp(formal_params[i], "real") || !safe_strcmp(formal_params[i], " real") )
-			&& (!safe_strcmp(actual_params[i], "integer") || !safe_strcmp(actual_params[i], " integer")) )
+			&& (!safe_strcmp(actual_params[i], "integer") || !safe_strcmp(actual_params[i], " integer")) ) {
+
 			continue;
+		}
 		if (safe_strcmp(formal_params[i], actual_params[i]))
 			return 0;
 	}
