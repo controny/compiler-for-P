@@ -501,7 +501,7 @@ function_invocation :
 
 			char params_str[20] = "";
 			char* params_array[20];
-			int num_params = get_splited_parameters(param_types, ",", params_array);
+			int num_params = get_splited_parameters(strdup(param_types), ", ", params_array);
 			for (int i = 0; i < num_params; i++) {
 				strcat(params_str, get_jvm_type_descriptor(params_array[i]));
 			}
