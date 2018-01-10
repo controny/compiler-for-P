@@ -56,6 +56,10 @@ int cur_if_fp_offsets_index;
 /* To differentiate labels */
 int label_postfix;
 
+char* params_array[20];
+int params_array_index;
+int num_params;
+
 void add_table();
 void add_symbol();
 void add_kind_and_type();
@@ -86,6 +90,7 @@ void set_locals_limit();
 void add_local_var_to_stack();
 void load_variable();
 int safe_strcmp();
+void coercion_in_params_passing();
 %}
 
 %token SEMICOLON COLON COMMA RPAREN LPAREN LSBRACKET RSBRACKET 
@@ -107,7 +112,6 @@ variable_reference function_invocation array_reference print_kind expressions
 
 %union {
 	struct Constant constant;
-	struct Constant list[50];  // to denote the type of `expressions`
 	char* text;
 	int count;
 }
@@ -483,7 +487,21 @@ procedure_call :
 	function_invocation SEMICOLON
 
 function_invocation :
-	IDENT LPAREN expressions RPAREN
+	IDENT 
+		{
+			char* param_types = NULL;
+			for (int scope = top; scope >= 0; scope--) {
+				for (int i = 0; i < cur_index[scope]; i++) {
+					if (!safe_strcmp($1, stack[scope][i].name)) {
+						param_types = strdup(stack[scope][i].attribute);
+						break;
+					}
+				}
+			}
+			num_params = get_splited_parameters(strdup(param_types), ", ", params_array);
+			params_array_index = 0;
+		}
+	LPAREN expressions RPAREN
 		{
 			$$.type = "";
 			char* param_types = NULL;
@@ -500,15 +518,13 @@ function_invocation :
 				char message[100] = "symbol '";
 				strcat( strcat(message, $1), "' not found");
 				yyerror(message);
-			} else if (!parameters_match(strdup(param_types), strdup($3.type))) {
+			} else if (!parameters_match(strdup(param_types), strdup($4.type))) {
 				yyerror("parameter type mismatch");
 			} else {
 				$$.type = return_type;
 			}
 
 			char params_str[20] = "";
-			char* params_array[20];
-			int num_params = get_splited_parameters(strdup(param_types), ", ", params_array);
 			for (int i = 0; i < num_params; i++) {
 				strcat(params_str, get_jvm_type_descriptor(params_array[i]));
 			}
@@ -517,6 +533,7 @@ function_invocation :
 				"invokestatic %s/%s(%s)%s",
 				file_name, $1, params_str, get_jvm_type_descriptor(return_type));
 			write_assembly_code(assembly);
+			num_params = 0;
 		}
 
 variable_reference :
@@ -634,11 +651,19 @@ literal_constant :
 expressions :
 	/* empty */ { $$.type = ""; }
 	| expression
-	| expression COMMA expressions
+		{
+			// Type coercion in parameters passing
+			coercion_in_params_passing($1.type);
+		}
+	| expression
+		{
+			coercion_in_params_passing($1.type);
+		}
+	COMMA expressions
 		{
 			$$.type = malloc(100);
 			strcpy($$.type, $1.type);
-			strcat( strcat($$.type, ", "), $3.type );
+			strcat( strcat($$.type, ", "), $4.type );
 		}
 
 arguments :
@@ -1172,6 +1197,16 @@ int safe_strcmp(char* a, char* b)
 		return strcmp(a, b);
 	return 1;
 }
+
+void coercion_in_params_passing(char* type)
+{
+	if (num_params && params_array_index < num_params
+		&& !safe_strcmp(params_array[params_array_index++], "real")
+		&& !safe_strcmp(type, "integer")) {
+		write_assembly_code("i2f");
+	}
+}
+
 int  main( int argc, char **argv )
 {
 	if( argc != 2 ) {
